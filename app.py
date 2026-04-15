@@ -160,7 +160,8 @@ async def fetch_uniprot_accession(symbol: str):
 
     return {
         "accession": accession,
-        "alphafold_entry_url": f"https://alphafold.ebi.ac.uk/entry/{accession}"
+        "alphafold_entry_url": f"https://alphafold.ebi.ac.uk/entry/{accession}",
+        "molstar_embed_url": f"https://molstar.org/viewer/?afdb={accession}&hide-controls=1"
     }
 
 
