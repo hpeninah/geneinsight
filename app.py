@@ -164,8 +164,10 @@ async def get_gene_report(symbol: str):
         raise HTTPException(status_code=404, detail=f"No gene found for symbol '{symbol}'.")
 
     papers = await fetch_related_papers_pubmed(symbol)
+    alphafold = await fetch_uniprot_accession(symbol)
 
     return {
         "gene": gene,
-        "papers": papers
+        "papers": papers,
+        "alphafold": alphafold
     }
