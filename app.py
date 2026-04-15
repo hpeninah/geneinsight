@@ -49,7 +49,7 @@ async def fetch_related_papers_pubmed(symbol: str):
     """
     base = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
     tool_name = "geneinsight_lite"
-    email = "student@example.com"  # replace with one team member's email if you want
+    email = "student@example.com"  # replace with someone's email if you want
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         # Step 1: Search PubMed
@@ -119,6 +119,51 @@ async def fetch_related_papers_pubmed(symbol: str):
 
     return papers
 
+async def fetch_uniprot_accession(symbol: str):
+    url = "https://rest.uniprot.org/uniprotkb/search"
+    params = {
+        "query": f'gene:{symbol} AND organism_id:9606',
+        "fields": "accession,gene_names,protein_name",
+        "format": "json",
+        "size": 5
+    }
+
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        response = await client.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
+
+    results = data.get("results", [])
+    print("UniProt raw results:", results)
+
+    if not results:
+        return None
+
+    best_entry = None
+
+    for entry in results:
+        genes = entry.get("genes", [])
+        for gene in genes:
+            gene_name = gene.get("geneName", {}).get("value", "")
+            if gene_name.upper() == symbol.upper():
+                best_entry = entry
+                break
+        if best_entry:
+            break
+
+    if best_entry is None:
+        best_entry = results[0]
+
+    accession = best_entry.get("primaryAccession")
+    if not accession:
+        return None
+
+    return {
+        "accession": accession,
+        "alphafold_entry_url": f"https://alphafold.ebi.ac.uk/entry/{accession}",
+        "molstar_embed_url": f"https://molstar.org/viewer/?afdb={accession}&hide-controls=1"
+    }
+
 
 @app.get("/api/gene/{symbol}")
 async def get_gene_report(symbol: str):
@@ -132,8 +177,10 @@ async def get_gene_report(symbol: str):
         raise HTTPException(status_code=404, detail=f"No gene found for symbol '{symbol}'.")
 
     papers = await fetch_related_papers_pubmed(symbol)
+    alphafold = await fetch_uniprot_accession(symbol)
 
     return {
         "gene": gene,
-        "papers": papers
+        "papers": papers,
+        "alphafold": alphafold
     }
