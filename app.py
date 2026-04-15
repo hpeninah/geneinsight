@@ -120,15 +120,12 @@ async def fetch_related_papers_pubmed(symbol: str):
     return papers
 
 async def fetch_uniprot_accession(symbol: str):
-    """
-    find reviewed UniProt accession for gene symbol
-    """
     url = "https://rest.uniprot.org/uniprotkb/search"
     params = {
-        "query": f'gene_exact:{symbol} AND organism_id:9606',
-        "fields": "accession,gene_names,protein_name,reviewed",
+        "query": f'gene:{symbol} AND organism_id:9606',
+        "fields": "accession,gene_names,protein_name",
         "format": "json",
-        "size": 1
+        "size": 5
     }
 
     async with httpx.AsyncClient(timeout=20.0) as client:
@@ -137,18 +134,33 @@ async def fetch_uniprot_accession(symbol: str):
         data = response.json()
 
     results = data.get("results", [])
+    print("UniProt raw results:", results)
+
     if not results:
         return None
-    
-    entry = results[0]
-    accession = entry.get("primaryAccession")
 
+    best_entry = None
+
+    for entry in results:
+        genes = entry.get("genes", [])
+        for gene in genes:
+            gene_name = gene.get("geneName", {}).get("value", "")
+            if gene_name.upper() == symbol.upper():
+                best_entry = entry
+                break
+        if best_entry:
+            break
+
+    if best_entry is None:
+        best_entry = results[0]
+
+    accession = best_entry.get("primaryAccession")
     if not accession:
         return None
-    
+
     return {
         "accession": accession,
-        "alphafold_entry_url": f"https://alphafold.com/entry/AF-{accession}-F1"
+        "alphafold_entry_url": f"https://alphafold.ebi.ac.uk/entry/{accession}"
     }
 
 

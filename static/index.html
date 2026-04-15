@@ -139,9 +139,24 @@
         let alphafoldHtml = `
         <div class="card">
           <h3>AlphaFold Structure</h3>
+          <
           <p class="muted">No AlphaFold entry found for this gene.</p>
         </div>
         `;
+
+        if (alphafold && alphafold.accession) {
+          alphafoldHtml = `
+            <div class="card">
+              <h3>AlphaFold Structure</h3>
+              <p><strong>UniProt accession:</strong> ${alphafold.accession}</p>
+              <p>
+                <a href="${alphafold.alphafold_entry_url}" target="_blank">
+                  Open AlphaFold structure
+                </a>
+              </p>
+            </div>
+          `;
+        }
 
         let html = `
           <div class="card">
