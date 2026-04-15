@@ -49,7 +49,7 @@ async def fetch_related_papers_pubmed(symbol: str):
     """
     base = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
     tool_name = "geneinsight_lite"
-    email = "student@example.com"  # replace with one team member's email if you want
+    email = "student@example.com"  # replace with someone's email if you want
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         # Step 1: Search PubMed
@@ -118,6 +118,38 @@ async def fetch_related_papers_pubmed(symbol: str):
         })
 
     return papers
+
+async def fetch_uniprot_accession(symbol: str):
+    """
+    find reviewed UniProt accession for gene symbol
+    """
+    url = "https://rest.uniprot.org/uniprotkb/search"
+    params = {
+        "query": f'gene_exact:{symbol} AND organism_id:9606',
+        "fields": "accession,gene_names,protein_name,reviewed",
+        "format": "json",
+        "size": 1
+    }
+
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        response = await client.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
+
+    results = data.get("results", [])
+    if not results:
+        return None
+    
+    entry = results[0]
+    accession = entry.get("primaryAccession")
+
+    if not accession:
+        return None
+    
+    return {
+        "accession": accession,
+        "alphafold_entry_url": f"https://alphafold.com/entry/AF-{accession}-F1"
+    }
 
 
 @app.get("/api/gene/{symbol}")
