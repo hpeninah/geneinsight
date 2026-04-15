@@ -110,6 +110,7 @@
       const result = document.getElementById("result");
       const status = document.getElementById("status");
 
+
       const gene = input.value.trim();
       result.innerHTML = "";
 
@@ -131,6 +132,7 @@
         const data = await response.json();
         const geneData = data.gene;
         const papers = data.papers || [];
+        const alphafold = data.alphafold;
 
         status.innerHTML = "";
 
@@ -142,9 +144,32 @@
             <p><strong>Summary:</strong> ${geneData.summary}</p>
           </div>
 
+          ${alphafoldHtml}
+
           <div class="card">
             <h3>Recent Related Papers</h3>
         `;
+
+        let alphafoldHtml = `
+        <div class="card">
+          <h3>AlphaFold Structure</h3>
+          <p class="muted">No AlphaFold entry found for this gene.</p>
+        </div>
+        `;
+        
+        if (alphafold && alphafold.accession) {
+          alphafoldHtml = `
+          <div class="card">
+            <h3>AlphaFold Structure</h3>
+            <p><strong>UniProt accession:</strong> ${alphafold.accession}</p>
+            <p>
+              <a href="${alphafold.alphafold_entry_url}" target="_blank" rel="noopener noreferrer">
+                Open AlphaFold structure
+              </a>
+            </p>
+          </div>
+          `;
+        }
 
         if (papers.length === 0) {
           html += `<p class="muted">No papers found.</p>`;
