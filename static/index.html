@@ -136,6 +136,13 @@
 
         status.innerHTML = "";
 
+        let alphafoldHtml = `
+        <div class="card">
+          <h3>AlphaFold Structure</h3>
+          <p class="muted">No AlphaFold entry found for this gene.</p>
+        </div>
+        `;
+
         let html = `
           <div class="card">
             <h2>${geneData.symbol}</h2>
@@ -148,13 +155,6 @@
 
           <div class="card">
             <h3>Recent Related Papers</h3>
-        `;
-
-        let alphafoldHtml = `
-        <div class="card">
-          <h3>AlphaFold Structure</h3>
-          <p class="muted">No AlphaFold entry found for this gene.</p>
-        </div>
         `;
         
         if (alphafold && alphafold.accession) {
