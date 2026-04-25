@@ -133,6 +133,7 @@
         const geneData = data.gene;
         const papers = data.papers || [];
         const alphafold = data.alphafold;
+        const geneStructure = data.gene_structure;
 
         status.innerHTML = "";
 
@@ -169,6 +170,67 @@
           `;
         }
 
+        let geneStructureHtml = `
+          <div class="card">
+            <h3>Gene Structure Viewer</h3>
+            <p class="muted">No gene structure data found.</p>
+          </div>
+        `;
+        if (geneStructure && geneStructure.exons && geneStructure.exons.length > 0) {
+          const transcriptLength = geneStructure.transcript_length;
+          let exonBars = "";
+
+          geneStructure.exons.forEach((exon) => {
+            const left = (exon.relative_start / transcriptLength) * 100;
+            const width = ((exon.relative_end - exon.relative_start + 1) / transcriptLength) * 100;
+
+            exonBars += `
+              <div
+                title="Exon: ${exon.start}-${exon.end}"
+                style="
+                  position: absolute;
+                  left: ${left}%;
+                  width: ${width}%;
+                  top: 8px;
+                  height: 24px;
+                  background: #2563eb;
+                  border-radius: 6px;
+                "
+              ></div>
+            `;
+          });
+
+          geneStructureHtml = `
+            <div class="card">
+              <h3>Gene Structure Viewer</h3>
+              <p><strong>Transcript ID:</strong> ${geneStructure.selected_transcript_id}</p>
+              <p><strong>Biotype:</strong> ${geneStructure.selected_transcript_biotype}</p>
+              <p><strong>Exons:</strong> ${geneStructure.exon_count}</p>
+              <p><strong>Transcript length:</strong> ${geneStructure.transcript_length} bp</p>
+
+              <div style="margin-top: 16px;">
+                <div style="position: relative; width: 100%; height: 40px; background: #e5e7eb; border-radius: 10px;">
+                  <div
+                    style="
+                      position: absolute;
+                      top: 18px;
+                      left: 0;
+                      width: 100%;
+                      height: 4px;
+                      background: #9ca3af;
+                    "
+                  ></div>
+                  ${exonBars}
+                </div>
+              </div>
+
+              <p class="muted" style="margin-top: 12px;">
+                Blue blocks represent exons. Gray connecting line represents introns.
+              </p>
+            </div>
+          `;
+        }
+
         let html = `
           <div class="card">
             <h2>${geneData.symbol}</h2>
@@ -178,6 +240,7 @@
           </div>
 
           ${alphafoldHtml}
+          ${geneStructureHtml}
 
           <div class="card">
             <h3>Recent Related Papers</h3>
