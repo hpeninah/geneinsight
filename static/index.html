@@ -127,6 +127,26 @@
     .mono {
       font-family: monospace;
     }
+
+    .help-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      margin-left: 4px;
+      border-radius: 50%;
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+      color: #475569;
+      font-size: 12px;
+      font-weight: bold;
+      cursor: help;
+    }
+
+    .help-btn:hover {
+      background: #e2e8f0;
+    }
   </style>
 </head>
 
@@ -463,14 +483,38 @@
           <table>
             <thead>
               <tr>
-                <th>Guide</th>
-                <th>PAM</th>
-                <th>Position</th>
-                <th>Cut Site</th>
-                <th>Strand</th>
-                <th>GC%</th>
-                <th>Score</th>
-                <th>Notes</th>
+                <th>
+                  Guide
+                  <span class="help-btn" title="The 20-base guide RNA candidate that directs Cas9 to the target DNA sequence.">?</span>
+                </th>
+                <th>
+                  PAM
+                  <span class="help-btn" title="The short DNA motif required for Cas9 binding. For SpCas9, this is usually NGG.">?</span>
+                </th>
+                <th>
+                  Position
+                  <span class="help-btn" title="The starting position of the guide sequence within the input DNA.">?</span>
+                </th>
+                <th>
+                  Cut Site
+                  <span class="help-btn" title="Approximate location where Cas9 cuts the DNA, usually about 3 bases before the PAM.">?</span>
+                </th>
+                <th>
+                  Strand
+                  <span class="help-btn" title="Indicates whether the guide was found on the forward (+) or reverse (-) DNA strand.">?</span>
+                </th>
+                <th>
+                  GC%
+                  <span class="help-btn" title="The percentage of G and C bases in the guide. A moderate range, often around 40–60%, is usually preferred.">?</span>
+                </th>
+                <th>
+                  Score
+                  <span class="help-btn" title="A simple heuristic score based on guide quality features such as GC content and sequence patterns.">?</span>
+                </th>
+                <th>
+                  Notes
+                  <span class="help-btn" title="Brief explanation of why the guide received its score or any potential concerns.">?</span>
+                </th>
               </tr>
             </thead>
             <tbody>
