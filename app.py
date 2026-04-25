@@ -166,9 +166,11 @@ async def fetch_uniprot_accession(symbol: str):
 
 async def fetch_gene_structure(symbol: str):
     url = f"https://rest.ensembl.org/lookup/symbol/homo_sapiens/{symbol}"
+
     params = {
         "expand": 1
     }
+
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json"
@@ -184,55 +186,92 @@ async def fetch_gene_structure(symbol: str):
         data = response.json()
 
     transcripts = data.get("Transcript", [])
+
     if not transcripts:
         return None
 
-    # Prefer protein-coding transcripts, then choose the longest
-    protein_coding = [
-        t for t in transcripts
-        if t.get("biotype") == "protein_coding" and t.get("Exon")
+    transcripts_with_exons = [
+        transcript
+        for transcript in transcripts
+        if transcript.get("Exon")
     ]
 
-    candidates = protein_coding if protein_coding else [t for t in transcripts if t.get("Exon")]
-
-    if not candidates:
+    if not transcripts_with_exons:
         return None
 
-    def transcript_length(t):
-        return abs(t.get("end", 0) - t.get("start", 0))
+    def transcript_length(transcript):
+        return abs(transcript.get("end", 0) - transcript.get("start", 0)) + 1
 
-    transcript = max(candidates, key=transcript_length)
+    # Prefer protein-coding transcripts, then choose the longest
+    protein_coding = [
+        transcript
+        for transcript in transcripts_with_exons
+        if transcript.get("biotype") == "protein_coding"
+    ]
 
-    exons = transcript.get("Exon", [])
-    exons_sorted = sorted(exons, key=lambda e: e["start"])
+    candidates = protein_coding if protein_coding else transcripts_with_exons
+    selected_transcript = max(candidates, key=transcript_length)
 
-    tx_start = transcript["start"]
-    tx_end = transcript["end"]
-    strand = transcript.get("strand", 1)
+    def build_transcript_payload(transcript):
+        tx_start = transcript["start"]
+        tx_end = transcript["end"]
+        tx_length = abs(tx_end - tx_start) + 1
 
-    # Normalize exon positions to transcript relative positions
-    exon_blocks = []
-    for exon in exons_sorted:
-        exon_blocks.append({
-            "start": exon["start"],
-            "end": exon["end"],
-            "relative_start": exon["start"] - tx_start,
-            "relative_end": exon["end"] - tx_start
-        })
+        exons = transcript.get("Exon", [])
+        exons_sorted = sorted(exons, key=lambda exon: exon["start"])
+
+        exon_blocks = []
+
+        for index, exon in enumerate(exons_sorted, start=1):
+            exon_start = exon["start"]
+            exon_end = exon["end"]
+            exon_length = abs(exon_end - exon_start) + 1
+
+            exon_blocks.append({
+                "number": index,
+                "start": exon_start,
+                "end": exon_end,
+                "length": exon_length,
+                "relative_start": exon_start - tx_start,
+                "relative_end": exon_end - tx_start
+            })
+
+        return {
+            "transcript_id": transcript.get("id"),
+            "biotype": transcript.get("biotype"),
+            "start": tx_start,
+            "end": tx_end,
+            "length": tx_length,
+            "strand": transcript.get("strand", data.get("strand", 1)),
+            "exon_count": len(exon_blocks),
+            "exons": exon_blocks
+        }
+
+    transcript_payloads = [
+        build_transcript_payload(transcript)
+        for transcript in transcripts_with_exons
+    ]
+
+    # Sort so protein-coding + longer transcripts appear first
+    transcript_payloads.sort(
+        key=lambda transcript: (
+            transcript["biotype"] == "protein_coding",
+            transcript["length"]
+        ),
+        reverse=True
+    )
+
+    selected_payload = build_transcript_payload(selected_transcript)
 
     return {
         "gene_symbol": symbol,
         "ensembl_gene_id": data.get("id"),
         "gene_start": data.get("start"),
         "gene_end": data.get("end"),
-        "selected_transcript_id": transcript.get("id"),
-        "selected_transcript_biotype": transcript.get("biotype"),
-        "transcript_start": tx_start,
-        "transcript_end": tx_end,
-        "transcript_length": abs(tx_end - tx_start) + 1,
-        "strand": strand,
-        "exon_count": len(exon_blocks),
-        "exons": exon_blocks
+        "gene_strand": data.get("strand", 1),
+        "selected_transcript_id": selected_payload["transcript_id"],
+        "selected_transcript": selected_payload,
+        "transcripts": transcript_payloads[:10]
     }
 
 @app.get("/api/gene/{symbol}")
