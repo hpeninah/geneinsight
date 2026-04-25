@@ -1,8 +1,10 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 import httpx
 import xml.etree.ElementTree as ET
+import re
 
 app = FastAPI(title="GeneInsight Lite")
 
@@ -134,7 +136,6 @@ async def fetch_uniprot_accession(symbol: str):
         data = response.json()
 
     results = data.get("results", [])
-    print("UniProt raw results:", results)
 
     if not results:
         return None
@@ -235,6 +236,98 @@ async def fetch_gene_structure(symbol: str):
         "exons": exon_blocks
     }
 
+class CrisprRequest(BaseModel):
+    sequence: str
+    pam: str = "NGG"
+    guide_length: int = 20
+
+def clean_sequence(seq: str):
+    seq = seq.upper().replace("\n","").replace(" ","")
+    return re.sub(r"[^ACGT]", "", seq)
+
+
+def reverse_complement(seq):
+    complement = str.maketrans("ACGT","TGCA")
+    return seq.translate(complement)[::-1]
+
+
+def gc_content(seq):
+    gc = seq.count("G")+seq.count("C")
+    return round(gc/len(seq)*100,2)
+
+
+def has_homopolymer(seq):
+    for b in "ACGT":
+        if b*5 in seq:
+            return True
+    return False
+
+
+def pam_matches(triplet):
+    return len(triplet)==3 and triplet[1:]=="GG"
+
+
+def score_guide(guide, full_sequence):
+    score = 10
+    notes=[]
+
+    gc=gc_content(guide)
+
+    if gc <35 or gc>65:
+        score -=2
+        notes.append("GC out of range")
+
+    if "TTTT" in guide:
+        score -=2
+        notes.append("TTTT motif")
+
+    if has_homopolymer(guide):
+        score -=1
+        notes.append("homopolymer")
+
+    return max(score,0), "; ".join(notes)
+
+
+def find_guides(sequence):
+    results=[]
+
+    for i in range(len(sequence)-2):
+
+        pam=sequence[i:i+3]
+
+        if pam_matches(pam):
+
+            start=i-20
+            end=i
+
+            if start>=0:
+                guide=sequence[start:end]
+
+                score,notes=score_guide(
+                    guide,
+                    sequence
+                )
+
+                cut_site = i - 3 + 1 #1-based position, about 3 bases before PAM
+                results.append({
+                    "guide":guide,
+                    "pam":pam,
+                    "position":start+1,
+                    "pam_position":i+1,
+                    "cut_site": cut_site,
+                    "strand":"+",
+                    "gc_percent":gc_content(guide),
+                    "score":score,
+                    "notes":notes
+                })
+
+    results.sort(
+        key=lambda x:x["score"],
+        reverse=True
+    )
+
+    return results
+
 @app.get("/api/gene/{symbol}")
 async def get_gene_report(symbol: str):
     symbol = symbol.strip().upper()
@@ -257,3 +350,27 @@ async def get_gene_report(symbol: str):
         "gene_structure": gene_structure
     }
 
+@app.post("/api/crispr/design")
+async def design_guides(payload: CrisprRequest):
+
+    sequence = clean_sequence(
+        payload.sequence
+    )
+
+    print("Raw sequence:", payload.sequence)
+    print("Cleaned sequence:", sequence)
+    print("Cleaned length:", len(sequence))
+
+    if len(sequence)<23:
+        raise HTTPException(
+            status_code=400,
+            detail="Sequence too short. Please enter at least 23 DNA bases."
+        )
+
+    guides=find_guides(sequence)
+
+    return {
+        "input_length":len(sequence),
+        "guide_count":len(guides),
+        "guides":guides[:20]
+    }

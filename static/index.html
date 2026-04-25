@@ -241,6 +241,16 @@
 
           ${alphafoldHtml}
           ${geneStructureHtml}
+          <div class ="card">
+            <h2>CRISPR Guide Explorer</h2>
+            <textarea id="crisprSequence"></textarea>
+
+            <button onClick="designGuides()">
+              Find Guides
+            </button>
+            <div id="crisprResult"></div>
+          </div>
+
 
           <div class="card">
             <h3>Recent Related Papers</h3>
@@ -282,6 +292,79 @@
 
       } catch (error) {
         status.innerHTML = `<div class="error">${error.message}</div>`;
+      }
+    }
+
+    async function designGuides() {
+      const sequence = document.getElementById("crisprSequence").value.trim();
+      const result = document.getElementById("crisprResult");
+
+      result.innerHTML = "";
+
+      if (!sequence) {
+        result.innerHTML = "<p class='error'>Please paste a DNA sequence.</p>";
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/crispr/design", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            sequence: sequence,
+            pam: "NGG",
+            guide_length: 20
+          })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.detail || "Something went wrong.");
+        }
+
+        if (!data.guides || data.guides.length === 0) {
+          result.innerHTML = "<p class='muted'>No valid guides found.</p>";
+          return;
+        }
+
+        let html = `
+          <p><strong>Guides found:</strong> ${data.guide_count}</p>
+          <table style="width:100%; border-collapse:collapse;">
+            <tr>
+              <th>Guide</th>
+              <th>PAM</th>
+              <th>Position</th>
+              <th>Cut Site</th>
+              <th>Strand</th>
+              <th>GC%</th>
+              <th>Score</th>
+              <th>Notes</th>
+            </tr>
+        `;
+
+        data.guides.forEach((g) => {
+          html += `
+            <tr>
+              <td>${g.guide}</td>
+              <td>${g.pam}</td>
+              <td>${g.position}</td>
+              <td>${g.cut_site}</td>
+              <td>${g.strand}</td>
+              <td>${g.gc_percent}</td>
+              <td>${g.score}</td>
+              <td>${g.notes}</td>
+            </tr>
+          `;
+        });
+
+        html += "</table>";
+        result.innerHTML = html;
+
+      } catch (error) {
+        result.innerHTML = `<p class="error">${error.message}</p>`;
       }
     }
   </script>
