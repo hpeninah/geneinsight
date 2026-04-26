@@ -218,24 +218,23 @@ async def fetch_gene_structure(symbol: str):
     if not transcripts:
         return None
 
-    protein_coding = [
-        transcript
-        for transcript in transcripts
-        if transcript.get("biotype") == "protein_coding"
-        and transcript.get("Exon")
-    ]
-
-    candidates = protein_coding if protein_coding else [
+    transcripts_with_exons = [
         transcript
         for transcript in transcripts
         if transcript.get("Exon")
     ]
 
-    if not candidates:
+    if not transcripts_with_exons:
         return None
 
     def transcript_length(transcript):
-        return abs(transcript.get("end", 0) - transcript.get("start", 0))
+        return abs(transcript.get("end", 0) - transcript.get("start", 0)) + 1
+
+    protein_coding = [
+        transcript
+        for transcript in transcripts_with_exons
+        if transcript.get("biotype") == "protein_coding"
+    ]
 
     candidates = protein_coding if protein_coding else transcripts_with_exons
     selected_transcript = max(candidates, key=transcript_length)
@@ -275,35 +274,30 @@ async def fetch_gene_structure(symbol: str):
             "exons": exon_blocks
         }
 
-    exons = transcript.get("Exon", [])
-    exons_sorted = sorted(exons, key=lambda exon: exon["start"])
+    transcript_payloads = [
+        build_transcript_payload(transcript)
+        for transcript in transcripts_with_exons
+    ]
 
-    tx_start = transcript["start"]
-    tx_end = transcript["end"]
+    transcript_payloads.sort(
+        key=lambda transcript: (
+            transcript["biotype"] == "protein_coding",
+            transcript["length"]
+        ),
+        reverse=True
+    )
 
-    exon_blocks = []
-
-    for exon in exons_sorted:
-        exon_blocks.append({
-            "start": exon["start"],
-            "end": exon["end"],
-            "relative_start": exon["start"] - tx_start,
-            "relative_end": exon["end"] - tx_start
-        })
+    selected_payload = build_transcript_payload(selected_transcript)
 
     return {
         "gene_symbol": symbol,
         "ensembl_gene_id": data.get("id"),
         "gene_start": data.get("start"),
         "gene_end": data.get("end"),
-        "selected_transcript_id": transcript.get("id"),
-        "selected_transcript_biotype": transcript.get("biotype"),
-        "transcript_start": tx_start,
-        "transcript_end": tx_end,
-        "transcript_length": abs(tx_end - tx_start) + 1,
-        "strand": transcript.get("strand", 1),
-        "exon_count": len(exon_blocks),
-        "exons": exon_blocks
+        "gene_strand": data.get("strand", 1),
+        "selected_transcript_id": selected_payload["transcript_id"],
+        "selected_transcript": selected_payload,
+        "transcripts": transcript_payloads[:10]
     }
 
 # CRISPR helper functions
