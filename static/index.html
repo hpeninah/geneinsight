@@ -165,6 +165,8 @@
   <div id="result"></div>
 
   <script>
+    let currentGeneStructure = null;
+
     async function searchGene() {
       const input = document.getElementById("geneInput");
       const result = document.getElementById("result");
@@ -195,6 +197,7 @@
         const alphafold = data.alphafold;
         const geneStructure = data.gene_structure;
 
+        currentGeneStructure = geneStructure;
         status.innerHTML = "";
 
         const geneOverviewHtml = buildGeneOverview(geneData);

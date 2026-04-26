@@ -6,8 +6,6 @@ import httpx
 import xml.etree.ElementTree as ET
 import re
 
-# App setup
-
 app = FastAPI(title="GeneInsight Lite")
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -239,7 +237,43 @@ async def fetch_gene_structure(symbol: str):
     def transcript_length(transcript):
         return abs(transcript.get("end", 0) - transcript.get("start", 0))
 
-    transcript = max(candidates, key=transcript_length)
+    candidates = protein_coding if protein_coding else transcripts_with_exons
+    selected_transcript = max(candidates, key=transcript_length)
+
+    def build_transcript_payload(transcript):
+        tx_start = transcript["start"]
+        tx_end = transcript["end"]
+        tx_length = abs(tx_end - tx_start) + 1
+
+        exons = transcript.get("Exon", [])
+        exons_sorted = sorted(exons, key=lambda exon: exon["start"])
+
+        exon_blocks = []
+
+        for index, exon in enumerate(exons_sorted, start=1):
+            exon_start = exon["start"]
+            exon_end = exon["end"]
+            exon_length = abs(exon_end - exon_start) + 1
+
+            exon_blocks.append({
+                "number": index,
+                "start": exon_start,
+                "end": exon_end,
+                "length": exon_length,
+                "relative_start": exon_start - tx_start,
+                "relative_end": exon_end - tx_start
+            })
+
+        return {
+            "transcript_id": transcript.get("id"),
+            "biotype": transcript.get("biotype"),
+            "start": tx_start,
+            "end": tx_end,
+            "length": tx_length,
+            "strand": transcript.get("strand", data.get("strand", 1)),
+            "exon_count": len(exon_blocks),
+            "exons": exon_blocks
+        }
 
     exons = transcript.get("Exon", [])
     exons_sorted = sorted(exons, key=lambda exon: exon["start"])
