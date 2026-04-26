@@ -15,9 +15,18 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 def read_index():
     return FileResponse("static/index.html")
 
+# Request models
+
+class CrisprRequest(BaseModel):
+    sequence: str
+    pam: str = "NGG"
+    guide_length: int = 20
+
+# Gene information: MyGene.info
 
 async def fetch_gene_data(symbol: str):
     url = "https://mygene.info/v3/query"
+
     params = {
         "q": f"symbol:{symbol}",
         "species": "human",
@@ -31,10 +40,12 @@ async def fetch_gene_data(symbol: str):
         data = response.json()
 
     hits = data.get("hits", [])
+
     if not hits:
         return None
 
     hit = hits[0]
+
     return {
         "symbol": hit.get("symbol", symbol.upper()),
         "name": hit.get("name", "N/A"),
@@ -42,19 +53,14 @@ async def fetch_gene_data(symbol: str):
         "entrezgene": hit.get("entrezgene", "N/A"),
     }
 
+# Literature: PubMed / NCBI E-utilities
 
 async def fetch_related_papers_pubmed(symbol: str):
-    """
-    Search PubMed with NCBI E-utilities:
-    1) esearch -> get PMIDs
-    2) efetch -> get article metadata/abstracts in XML
-    """
     base = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
     tool_name = "geneinsight_lite"
     email = "student@example.com"
 
     async with httpx.AsyncClient(timeout=30.0) as client:
-        # Search PubMed
         search_params = {
             "db": "pubmed",
             "term": f'{symbol}[Title/Abstract]',
@@ -65,15 +71,18 @@ async def fetch_related_papers_pubmed(symbol: str):
             "email": email,
         }
 
-        search_response = await client.get(f"{base}/esearch.fcgi", params=search_params)
+        search_response = await client.get(
+            f"{base}/esearch.fcgi",
+            params=search_params
+        )
         search_response.raise_for_status()
         search_data = search_response.json()
 
         id_list = search_data.get("esearchresult", {}).get("idlist", [])
+
         if not id_list:
             return []
 
-        # Step 2: Fetch article details
         fetch_params = {
             "db": "pubmed",
             "id": ",".join(id_list),
@@ -82,7 +91,10 @@ async def fetch_related_papers_pubmed(symbol: str):
             "email": email,
         }
 
-        fetch_response = await client.get(f"{base}/efetch.fcgi", params=fetch_params)
+        fetch_response = await client.get(
+            f"{base}/efetch.fcgi",
+            params=fetch_params
+        )
         fetch_response.raise_for_status()
 
     root = ET.fromstring(fetch_response.text)
@@ -90,10 +102,14 @@ async def fetch_related_papers_pubmed(symbol: str):
 
     for article in root.findall(".//PubmedArticle"):
         title = article.findtext(".//ArticleTitle", default="Untitled")
+
         abstract_parts = article.findall(".//Abstract/AbstractText")
         abstract = " ".join(
-            "".join(part.itertext()).strip() for part in abstract_parts if "".join(part.itertext()).strip()
+            "".join(part.itertext()).strip()
+            for part in abstract_parts
+            if "".join(part.itertext()).strip()
         )
+
         if not abstract:
             abstract = "No abstract available."
 
@@ -101,6 +117,7 @@ async def fetch_related_papers_pubmed(symbol: str):
 
         year = "N/A"
         year_node = article.find(".//PubDate/Year")
+
         if year_node is not None and year_node.text:
             year = year_node.text
         else:
@@ -121,8 +138,11 @@ async def fetch_related_papers_pubmed(symbol: str):
 
     return papers
 
+# Protein structure: UniProt + AlphaFold
+
 async def fetch_uniprot_accession(symbol: str):
     url = "https://rest.uniprot.org/uniprotkb/search"
+
     params = {
         "query": f'gene:{symbol} AND organism_id:9606',
         "fields": "accession,gene_names,protein_name",
@@ -136,7 +156,6 @@ async def fetch_uniprot_accession(symbol: str):
         data = response.json()
 
     results = data.get("results", [])
-    print("UniProt raw results:", results)
 
     if not results:
         return None
@@ -145,11 +164,14 @@ async def fetch_uniprot_accession(symbol: str):
 
     for entry in results:
         genes = entry.get("genes", [])
+
         for gene in genes:
             gene_name = gene.get("geneName", {}).get("value", "")
+
             if gene_name.upper() == symbol.upper():
                 best_entry = entry
                 break
+
         if best_entry:
             break
 
@@ -157,6 +179,7 @@ async def fetch_uniprot_accession(symbol: str):
         best_entry = results[0]
 
     accession = best_entry.get("primaryAccession")
+
     if not accession:
         return None
 
@@ -165,6 +188,9 @@ async def fetch_uniprot_accession(symbol: str):
         "alphafold_entry_url": f"https://alphafold.ebi.ac.uk/entry/{accession}",
         "molstar_embed_url": f"https://molstar.org/viewer/?afdb={accession}&hide-controls=1"
     }
+
+
+# Gene structure: Ensembl
 
 async def fetch_gene_structure(symbol: str):
     url = f"https://rest.ensembl.org/lookup/symbol/homo_sapiens/{symbol}"
@@ -192,24 +218,24 @@ async def fetch_gene_structure(symbol: str):
     if not transcripts:
         return None
 
-    transcripts_with_exons = [
+    protein_coding = [
+        transcript
+        for transcript in transcripts
+        if transcript.get("biotype") == "protein_coding"
+        and transcript.get("Exon")
+    ]
+
+    candidates = protein_coding if protein_coding else [
         transcript
         for transcript in transcripts
         if transcript.get("Exon")
     ]
 
-    if not transcripts_with_exons:
+    if not candidates:
         return None
 
     def transcript_length(transcript):
-        return abs(transcript.get("end", 0) - transcript.get("start", 0)) + 1
-
-    # Prefer protein-coding transcripts, then choose the longest
-    protein_coding = [
-        transcript
-        for transcript in transcripts_with_exons
-        if transcript.get("biotype") == "protein_coding"
-    ]
+        return abs(transcript.get("end", 0) - transcript.get("start", 0))
 
     candidates = protein_coding if protein_coding else transcripts_with_exons
     selected_transcript = max(candidates, key=transcript_length)
@@ -249,38 +275,38 @@ async def fetch_gene_structure(symbol: str):
             "exons": exon_blocks
         }
 
-    transcript_payloads = [
-        build_transcript_payload(transcript)
-        for transcript in transcripts_with_exons
-    ]
+    exons = transcript.get("Exon", [])
+    exons_sorted = sorted(exons, key=lambda exon: exon["start"])
 
-    # Sort so protein-coding + longer transcripts appear first
-    transcript_payloads.sort(
-        key=lambda transcript: (
-            transcript["biotype"] == "protein_coding",
-            transcript["length"]
-        ),
-        reverse=True
-    )
+    tx_start = transcript["start"]
+    tx_end = transcript["end"]
 
-    selected_payload = build_transcript_payload(selected_transcript)
+    exon_blocks = []
+
+    for exon in exons_sorted:
+        exon_blocks.append({
+            "start": exon["start"],
+            "end": exon["end"],
+            "relative_start": exon["start"] - tx_start,
+            "relative_end": exon["end"] - tx_start
+        })
 
     return {
         "gene_symbol": symbol,
         "ensembl_gene_id": data.get("id"),
         "gene_start": data.get("start"),
         "gene_end": data.get("end"),
-        "gene_strand": data.get("strand", 1),
-        "selected_transcript_id": selected_payload["transcript_id"],
-        "selected_transcript": selected_payload,
-        "transcripts": transcript_payloads[:10]
+        "selected_transcript_id": transcript.get("id"),
+        "selected_transcript_biotype": transcript.get("biotype"),
+        "transcript_start": tx_start,
+        "transcript_end": tx_end,
+        "transcript_length": abs(tx_end - tx_start) + 1,
+        "strand": transcript.get("strand", 1),
+        "exon_count": len(exon_blocks),
+        "exons": exon_blocks
     }
 
-class CrisprRequest(BaseModel):
-    sequence: str
-    pam: str = "NGG"
-    guide_length: int = 20
-
+# CRISPR helper functions
 
 def clean_sequence(sequence: str) -> str:
     sequence = sequence.upper().replace("\n", "").replace(" ", "")
@@ -373,10 +399,12 @@ def add_guide_result(
     strand: str,
     full_sequence: str
 ):
+    """
+    guide_start and pam_start are 0-based positions in the original input sequence.
+    cut_site is stored as 1-based approximate position.
+    """
     score, notes = score_guide(guide, full_sequence)
 
-    # Approximate SpCas9 cut site: about 3 bases upstream of PAM.
-    # Stored as 1-based position for user readability.
     cut_site = pam_start - 3 + 1
 
     results.append({
@@ -429,6 +457,7 @@ def find_guides(sequence: str, pam: str = "NGG", guide_length: int = 20):
             if guide_start >= 0:
                 guide = reverse_sequence[guide_start:guide_end]
 
+                # Convert reverse-complement guide position back to original sequence.
                 original_guide_start = len(sequence) - guide_end
                 original_pam_start = len(sequence) - (i + 3)
 
@@ -446,27 +475,51 @@ def find_guides(sequence: str, pam: str = "NGG", guide_length: int = 20):
 
     return results
 
+# API routes
+
 @app.get("/api/gene/{symbol}")
 async def get_gene_report(symbol: str):
     symbol = symbol.strip().upper()
 
     if not symbol:
-        raise HTTPException(status_code=400, detail="Gene symbol is required.")
+        raise HTTPException(
+            status_code=400,
+            detail="Gene symbol is required."
+        )
 
     gene = await fetch_gene_data(symbol)
-    if gene is None:
-        raise HTTPException(status_code=404, detail=f"No gene found for symbol '{symbol}'.")
 
-    papers = await fetch_related_papers_pubmed(symbol)
-    alphafold = await fetch_uniprot_accession(symbol)
-    gene_structure = await fetch_gene_structure(symbol)
-    
+    if gene is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No gene found for symbol '{symbol}'."
+        )
+
+    try:
+        papers = await fetch_related_papers_pubmed(symbol)
+    except Exception as error:
+        print("PubMed unavailable:", error)
+        papers = []
+
+    try:
+        alphafold = await fetch_uniprot_accession(symbol)
+    except Exception as error:
+        print("UniProt/AlphaFold unavailable:", error)
+        alphafold = None
+
+    try:
+        gene_structure = await fetch_gene_structure(symbol)
+    except Exception as error:
+        print("Ensembl unavailable:", error)
+        gene_structure = None
+
     return {
         "gene": gene,
         "papers": papers,
         "alphafold": alphafold,
         "gene_structure": gene_structure
     }
+
 
 @app.post("/api/crispr/design")
 async def design_guides(payload: CrisprRequest):
@@ -491,3 +544,5 @@ async def design_guides(payload: CrisprRequest):
         "guide_count": len(guides),
         "guides": guides[:20]
     }
+
+## ATGCGTACGATCGTAGGCTAGCTAGGCTAGCTAGGATCGGATCGTAGCTAGGCTAGCTAAGG
