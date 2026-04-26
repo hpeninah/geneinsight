@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GeneInsight Lite</title>
+
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -18,6 +19,10 @@
       margin-bottom: 8px;
     }
 
+    h2, h3 {
+      margin-top: 0;
+    }
+
     .subtitle {
       margin-bottom: 24px;
       color: #4b5563;
@@ -29,12 +34,24 @@
       margin-bottom: 24px;
     }
 
-    input {
-      flex: 1;
+    input,
+    textarea,
+    select {
       padding: 12px;
       font-size: 16px;
       border: 1px solid #cbd5e1;
       border-radius: 8px;
+      box-sizing: border-box;
+    }
+
+    input {
+      flex: 1;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 130px;
+      font-family: monospace;
     }
 
     button {
@@ -88,8 +105,48 @@
     a:hover {
       text-decoration: underline;
     }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+    }
+
+    th,
+    td {
+      text-align: left;
+      border-bottom: 1px solid #e5e7eb;
+      padding: 8px;
+      vertical-align: top;
+    }
+
+    .mono {
+      font-family: monospace;
+    }
+
+    .help-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      margin-left: 4px;
+      padding: 0;
+      border-radius: 50%;
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+      color: #475569;
+      font-size: 12px;
+      font-weight: bold;
+      cursor: help;
+    }
+
+    .help-btn:hover {
+      background: #e2e8f0;
+    }
   </style>
 </head>
+
 <body>
   <h1>GeneInsight Lite</h1>
   <p class="subtitle">
@@ -105,11 +162,12 @@
   <div id="result"></div>
 
   <script>
+    let currentGeneStructure = null;
+
     async function searchGene() {
       const input = document.getElementById("geneInput");
       const result = document.getElementById("result");
       const status = document.getElementById("status");
-
 
       const gene = input.value.trim();
       result.innerHTML = "";
@@ -130,159 +188,452 @@
         }
 
         const data = await response.json();
+
         const geneData = data.gene;
         const papers = data.papers || [];
         const alphafold = data.alphafold;
         const geneStructure = data.gene_structure;
 
+        currentGeneStructure = geneStructure;
         status.innerHTML = "";
 
-        let alphafoldHtml = `
-        <div class="card">
-          <h3>AlphaFold Structure</h3>
-          <
-          <p class="muted">No AlphaFold entry found for this gene.</p>
-        </div>
+        result.innerHTML = `
+          ${buildGeneOverview(geneData)}
+          ${buildAlphaFoldCard(alphafold)}
+          ${buildGeneStructureCard(geneStructure)}
+          ${buildCrisprCard()}
+          ${buildPapersCard(papers)}
         `;
 
-        if (alphafold && alphafold.accession) {
-          alphafoldHtml = `
-            <div class="card">
-              <h3>AlphaFold Structure</h3>
-              <p><strong>UniProt accession:</strong> ${alphafold.accession}</p>
-              <p>
-                <a href="${alphafold.alphafold_entry_url}" target="_blank">
-                  Open AlphaFold structure
-                </a>
-              </p>
+      } catch (error) {
+        status.innerHTML = `<div class="error">${error.message}</div>`;
+      }
+    }
 
-              <div style="margin-top: 16px; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden;">
-                <iframe
-                  src="${alphafold.molstar_embed_url}"
-                  width="100%"
-                  height="500"
-                  style="border: 0;"
-                  title="AlphaFold 3D Viewer"
-                  loading="lazy"
-                ></iframe>
-              </div>
-            </div>
-          `;
-        }
+    function buildGeneOverview(geneData) {
+      return `
+        <div class="card">
+          <h2>${geneData.symbol}</h2>
+          <p><strong>Full name:</strong> ${geneData.name}</p>
+          <p><strong>Entrez ID:</strong> ${geneData.entrezgene}</p>
+          <p><strong>Summary:</strong> ${geneData.summary}</p>
+        </div>
+      `;
+    }
 
-        let geneStructureHtml = `
+    function buildAlphaFoldCard(alphafold) {
+      if (!alphafold || !alphafold.accession) {
+        return `
+          <div class="card">
+            <h3>AlphaFold Structure</h3>
+            <p class="muted">No AlphaFold entry found for this gene.</p>
+          </div>
+        `;
+      }
+
+      return `
+        <div class="card">
+          <h3>AlphaFold Structure</h3>
+          <p><strong>UniProt accession:</strong> ${alphafold.accession}</p>
+          <p>
+            <a href="${alphafold.alphafold_entry_url}" target="_blank" rel="noopener noreferrer">
+              Open AlphaFold structure
+            </a>
+          </p>
+
+          <div style="margin-top: 16px; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden;">
+            <iframe
+              src="${alphafold.molstar_embed_url}"
+              width="100%"
+              height="500"
+              style="border: 0;"
+              title="AlphaFold 3D Viewer"
+              loading="lazy"
+            ></iframe>
+          </div>
+        </div>
+      `;
+    }
+
+    function buildGeneStructureCard(geneStructure) {
+      if (
+        !geneStructure ||
+        !geneStructure.selected_transcript ||
+        !geneStructure.selected_transcript.exons ||
+        geneStructure.selected_transcript.exons.length === 0
+      ) {
+        return `
           <div class="card">
             <h3>Gene Structure Viewer</h3>
             <p class="muted">No gene structure data found.</p>
           </div>
         `;
-        if (geneStructure && geneStructure.exons && geneStructure.exons.length > 0) {
-          const transcriptLength = geneStructure.transcript_length;
-          let exonBars = "";
+      }
 
-          geneStructure.exons.forEach((exon) => {
-            const left = (exon.relative_start / transcriptLength) * 100;
-            const width = ((exon.relative_end - exon.relative_start + 1) / transcriptLength) * 100;
+      const transcripts = geneStructure.transcripts || [];
+      const selectedTranscript = geneStructure.selected_transcript;
 
-            exonBars += `
+      const transcriptOptions = transcripts.map((transcript) => {
+        const selected =
+          transcript.transcript_id === selectedTranscript.transcript_id
+            ? "selected"
+            : "";
+
+        return `
+          <option value="${transcript.transcript_id}" ${selected}>
+            ${transcript.transcript_id} • ${transcript.biotype} • ${transcript.exon_count} exons
+          </option>
+        `;
+      }).join("");
+
+      return `
+        <div class="card">
+          <h3>Gene Structure Viewer</h3>
+          <p class="muted">
+            This viewer shows exon and intron organization using Ensembl transcript annotations.
+          </p>
+
+          <label for="transcriptSelect"><strong>Choose transcript:</strong></label>
+          <select
+            id="transcriptSelect"
+            onchange="updateGeneStructureViewer()"
+            style="width: 100%; margin-top: 8px;"
+          >
+            ${transcriptOptions}
+          </select>
+
+          <div id="geneStructureViewer" style="margin-top: 16px;">
+            ${renderTranscriptViewer(selectedTranscript)}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderTranscriptViewer(transcript) {
+      if (!transcript || !transcript.exons || transcript.exons.length === 0) {
+        return `<p class="muted">No transcript structure available.</p>`;
+      }
+
+      const transcriptLength = transcript.length;
+      const strandLabel = transcript.strand === -1 ? "Reverse (-)" : "Forward (+)";
+      const directionArrow = transcript.strand === -1 ? "←" : "→";
+
+      let exonBars = "";
+
+      transcript.exons.forEach((exon) => {
+        const left = (exon.relative_start / transcriptLength) * 100;
+        const width = ((exon.relative_end - exon.relative_start + 1) / transcriptLength) * 100;
+
+        exonBars += `
+          <div
+            title="Exon ${exon.number}: ${exon.start}-${exon.end} | Length: ${exon.length} bp"
+            style="
+              position: absolute;
+              left: ${left}%;
+              width: ${Math.max(width, 0.8)}%;
+              top: 8px;
+              height: 28px;
+              background: #2563eb;
+              border-radius: 6px;
+              color: white;
+              font-size: 11px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              overflow: hidden;
+            "
+          >
+            ${exon.number}
+          </div>
+        `;
+      });
+
+      const exonLengths = transcript.exons.map((exon) => exon.length);
+      const longestExon = Math.max(...exonLengths);
+      const shortestExon = Math.min(...exonLengths);
+
+      return `
+        <div>
+          <p><strong>Transcript ID:</strong> ${transcript.transcript_id}</p>
+          <p><strong>Biotype:</strong> ${transcript.biotype}</p>
+          <p><strong>Strand:</strong> ${strandLabel} <strong style="font-size: 20px;">${directionArrow}</strong></p>
+          <p><strong>Exons:</strong> ${transcript.exon_count}</p>
+          <p><strong>Transcript length:</strong> ${transcript.length} bp</p>
+
+          <div style="margin-top: 16px;">
+            <div style="
+              position: relative;
+              width: 100%;
+              height: 48px;
+              background: #e5e7eb;
+              border-radius: 10px;
+              overflow: hidden;
+            ">
               <div
-                title="Exon: ${exon.start}-${exon.end}"
                 style="
                   position: absolute;
-                  left: ${left}%;
-                  width: ${width}%;
-                  top: 8px;
-                  height: 24px;
-                  background: #2563eb;
-                  border-radius: 6px;
+                  top: 21px;
+                  left: 0;
+                  width: 100%;
+                  height: 4px;
+                  background: #9ca3af;
                 "
               ></div>
-            `;
-          });
 
-          geneStructureHtml = `
-            <div class="card">
-              <h3>Gene Structure Viewer</h3>
-              <p><strong>Transcript ID:</strong> ${geneStructure.selected_transcript_id}</p>
-              <p><strong>Biotype:</strong> ${geneStructure.selected_transcript_biotype}</p>
-              <p><strong>Exons:</strong> ${geneStructure.exon_count}</p>
-              <p><strong>Transcript length:</strong> ${geneStructure.transcript_length} bp</p>
-
-              <div style="margin-top: 16px;">
-                <div style="position: relative; width: 100%; height: 40px; background: #e5e7eb; border-radius: 10px;">
-                  <div
-                    style="
-                      position: absolute;
-                      top: 18px;
-                      left: 0;
-                      width: 100%;
-                      height: 4px;
-                      background: #9ca3af;
-                    "
-                  ></div>
-                  ${exonBars}
-                </div>
-              </div>
-
-              <p class="muted" style="margin-top: 12px;">
-                Blue blocks represent exons. Gray connecting line represents introns.
-              </p>
+              ${exonBars}
             </div>
-          `;
-        }
-
-        let html = `
-          <div class="card">
-            <h2>${geneData.symbol}</h2>
-            <p><strong>Full name:</strong> ${geneData.name}</p>
-            <p><strong>Entrez ID:</strong> ${geneData.entrezgene}</p>
-            <p><strong>Summary:</strong> ${geneData.summary}</p>
           </div>
 
-          ${alphafoldHtml}
-          ${geneStructureHtml}
+          <div style="margin-top: 12px; display: flex; gap: 16px; flex-wrap: wrap;">
+            <span><strong style="color:#2563eb;">■</strong> Exons</span>
+            <span><strong style="color:#9ca3af;">━</strong> Introns</span>
+            <span><strong>${directionArrow}</strong> Gene direction</span>
+          </div>
 
-          <div class="card">
-            <h3>Recent Related Papers</h3>
+          <div style="margin-top: 12px; background: #f9fafb; padding: 12px; border-radius: 8px;">
+            <p><strong>Structure Summary</strong></p>
+            <p class="muted">Longest exon: ${longestExon} bp</p>
+            <p class="muted">Shortest exon: ${shortestExon} bp</p>
+            <p class="muted">Hover over each exon block to see genomic coordinates and length.</p>
+          </div>
+        </div>
+      `;
+    }
+
+    function updateGeneStructureViewer() {
+      const select = document.getElementById("transcriptSelect");
+      const viewer = document.getElementById("geneStructureViewer");
+
+      if (!select || !viewer || !currentGeneStructure) {
+        return;
+      }
+
+      const selectedTranscriptId = select.value;
+
+      const selectedTranscript = currentGeneStructure.transcripts.find(
+        (transcript) => transcript.transcript_id === selectedTranscriptId
+      );
+
+      viewer.innerHTML = renderTranscriptViewer(selectedTranscript);
+    }
+
+    function buildCrisprCard() {
+      return `
+        <div class="card">
+          <h3>CRISPR Guide Explorer</h3>
+          <p class="muted">
+            Paste a DNA sequence to identify possible SpCas9 guide RNAs using NGG PAM detection.
+          </p>
+
+          <textarea
+            id="crisprSequence"
+            placeholder="Paste DNA sequence here..."
+          ></textarea>
+
+          <div style="margin-top: 12px;">
+            <button onclick="designGuides()">Find Guides</button>
+          </div>
+
+          <div id="crisprResult" style="margin-top: 16px;"></div>
+        </div>
+      `;
+    }
+
+    async function designGuides() {
+      const sequenceInput = document.getElementById("crisprSequence");
+      const result = document.getElementById("crisprResult");
+
+      const sequence = sequenceInput.value.trim();
+      result.innerHTML = "";
+
+      if (!sequence) {
+        result.innerHTML = "<p class='error'>Please paste a DNA sequence.</p>";
+        return;
+      }
+
+      result.innerHTML = "<p class='loading'>Designing guides...</p>";
+
+      try {
+        const response = await fetch("/api/crispr/design", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            sequence: sequence,
+            pam: "NGG",
+            guide_length: 20
+          })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.detail || "Something went wrong.");
+        }
+
+        if (!data.guides || data.guides.length === 0) {
+          result.innerHTML = "<p class='muted'>No valid guides found.</p>";
+          return;
+        }
+
+        const cleanedSequence = sequence.toUpperCase().replace(/[^ACGT]/g, "");
+        const sequenceVisualization = buildSequenceVisualization(cleanedSequence, data.guides[0]);
+        const guideTable = buildGuideTable(data.guides);
+
+        result.innerHTML = `
+          <p><strong>Input length:</strong> ${data.input_length} bp</p>
+          <p><strong>Guides found:</strong> ${data.guide_count}</p>
+          ${sequenceVisualization}
+          ${guideTable}
+
+          <p class="muted" style="margin-top: 12px;">
+            Scores are heuristic and based on GC content, repeat detection, and simple sequence quality checks.
+          </p>
         `;
-        
-        if (alphafold && alphafold.accession) {
-          alphafoldHtml = `
-          <div class="card">
-            <h3>AlphaFold Structure</h3>
-            <p><strong>UniProt accession:</strong> ${alphafold.accession}</p>
-            <p>
-              <a href="${alphafold.alphafold_entry_url}" target="_blank" rel="noopener noreferrer">
-                Open AlphaFold structure
-              </a>
-            </p>
-          </div>
-          `;
-        }
-
-        if (papers.length === 0) {
-          html += `<p class="muted">No papers found.</p>`;
-        } else {
-          papers.forEach((paper) => {
-            html += `
-              <div class="paper">
-                <p><strong>${paper.url
-                  ? `<a href="${paper.url}" target="_blank" rel="noopener noreferrer">${paper.title}</a>`
-                  : paper.title}
-                  </strong></p>
-                <p class="muted">${paper.journal} • ${paper.year}</p>
-                <p>${paper.abstract}</p>
-              </div>
-            `;
-          });
-        }
-
-        html += `</div>`;
-        result.innerHTML = html;
 
       } catch (error) {
-        status.innerHTML = `<div class="error">${error.message}</div>`;
+        result.innerHTML = `<p class="error">${error.message}</p>`;
       }
+    }
+
+    function buildSequenceVisualization(cleanedSequence, topGuide) {
+      if (!topGuide || !topGuide.pam_position || !topGuide.cut_site) {
+        return "";
+      }
+
+      const guideStart = topGuide.position - 1;
+      const guideEnd = guideStart + 20;
+      const pamStart = topGuide.pam_position - 1;
+      const pamEnd = pamStart + 3;
+      const cutIndex = topGuide.cut_site - 1;
+
+      let visualSeq = "";
+
+      for (let i = 0; i < cleanedSequence.length; i++) {
+        const base = cleanedSequence[i];
+
+        if (i === cutIndex) {
+          visualSeq += `<span style="color:#dc2626; font-weight:bold;">|</span>`;
+        }
+
+        if (i >= guideStart && i < guideEnd) {
+          visualSeq += `<span style="background:#dbeafe;">${base}</span>`;
+        } else if (i >= pamStart && i < pamEnd) {
+          visualSeq += `<span style="background:#fde68a; font-weight:bold;">${base}</span>`;
+        } else {
+          visualSeq += base;
+        }
+      }
+
+      return `
+        <div style="margin-top: 16px; padding: 12px; background: #f9fafb; border-radius: 8px; overflow-x: auto;">
+          <p><strong>Top Guide Visualization</strong></p>
+          <p class="muted">
+            Blue = guide RNA, Yellow = PAM, Red line = approximate Cas9 cut site.
+          </p>
+          <div style="font-family: monospace; white-space: nowrap; line-height: 1.8;">
+            ${visualSeq}
+          </div>
+        </div>
+      `;
+    }
+
+    function buildGuideTable(guides) {
+      let html = `
+        <div style="overflow-x: auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>
+                  Guide
+                  <span class="help-btn" title="The 20-base guide RNA candidate that directs Cas9 to the target DNA sequence.">?</span>
+                </th>
+                <th>
+                  PAM
+                  <span class="help-btn" title="The short DNA motif required for Cas9 binding. For SpCas9, this is usually NGG.">?</span>
+                </th>
+                <th>
+                  Position
+                  <span class="help-btn" title="The starting position of the guide sequence within the input DNA.">?</span>
+                </th>
+                <th>
+                  Cut Site
+                  <span class="help-btn" title="Approximate location where Cas9 cuts the DNA, usually about 3 bases before the PAM.">?</span>
+                </th>
+                <th>
+                  Strand
+                  <span class="help-btn" title="Indicates whether the guide was found on the forward (+) or reverse (-) DNA strand.">?</span>
+                </th>
+                <th>
+                  GC%
+                  <span class="help-btn" title="The percentage of G and C bases in the guide. A moderate range around 40–60% is usually preferred.">?</span>
+                </th>
+                <th>
+                  Score
+                  <span class="help-btn" title="A simple heuristic score based on guide quality features such as GC content and sequence patterns.">?</span>
+                </th>
+                <th>
+                  Notes
+                  <span class="help-btn" title="Brief explanation of why the guide received its score or any potential concerns.">?</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
+
+      guides.forEach((g) => {
+        html += `
+          <tr>
+            <td class="mono">${g.guide}</td>
+            <td class="mono">${g.pam}</td>
+            <td>${g.position ?? "N/A"}</td>
+            <td>${g.cut_site ?? "N/A"}</td>
+            <td>${g.strand ?? "N/A"}</td>
+            <td>${g.gc_percent ?? "N/A"}</td>
+            <td>${g.score ?? "N/A"}</td>
+            <td>${g.notes || ""}</td>
+          </tr>
+        `;
+      });
+
+      html += `
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      return html;
+    }
+
+    function buildPapersCard(papers) {
+      let html = `
+        <div class="card">
+          <h3>Recent Related Papers</h3>
+      `;
+
+      if (papers.length === 0) {
+        html += `<p class="muted">No papers found.</p>`;
+      } else {
+        papers.forEach((paper) => {
+          html += `
+            <div class="paper">
+              <p>
+                <strong>
+                  ${paper.url
+                    ? `<a href="${paper.url}" target="_blank" rel="noopener noreferrer">${paper.title}</a>`
+                    : paper.title}
+                </strong>
+              </p>
+              <p class="muted">${paper.journal} • ${paper.year}</p>
+              <p>${paper.abstract}</p>
+            </div>
+          `;
+        });
+      }
+
+      html += `</div>`;
+      return html;
     }
   </script>
 </body>

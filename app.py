@@ -1,8 +1,10 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 import httpx
 import xml.etree.ElementTree as ET
+import re
 
 app = FastAPI(title="GeneInsight Lite")
 
@@ -274,6 +276,176 @@ async def fetch_gene_structure(symbol: str):
         "transcripts": transcript_payloads[:10]
     }
 
+class CrisprRequest(BaseModel):
+    sequence: str
+    pam: str = "NGG"
+    guide_length: int = 20
+
+
+def clean_sequence(sequence: str) -> str:
+    sequence = sequence.upper().replace("\n", "").replace(" ", "")
+    return re.sub(r"[^ACGT]", "", sequence)
+
+
+def reverse_complement(sequence: str) -> str:
+    complement = str.maketrans("ACGT", "TGCA")
+    return sequence.translate(complement)[::-1]
+
+
+def gc_content(sequence: str) -> float:
+    if not sequence:
+        return 0.0
+
+    gc = sequence.count("G") + sequence.count("C")
+    return round((gc / len(sequence)) * 100, 2)
+
+
+def has_homopolymer(sequence: str, run_length: int = 5) -> bool:
+    return any(base * run_length in sequence for base in "ACGT")
+
+
+def count_exact_occurrences(guide: str, sequence: str) -> int:
+    count = 0
+    start = 0
+
+    while True:
+        index = sequence.find(guide, start)
+
+        if index == -1:
+            break
+
+        count += 1
+        start = index + 1
+
+    return count
+
+
+def pam_matches(triplet: str, pam: str = "NGG") -> bool:
+    if len(triplet) != 3:
+        return False
+
+    if pam == "NGG":
+        return triplet[1:] == "GG"
+
+    return False
+
+
+def score_guide(guide: str, full_sequence: str):
+    score = 10.0
+    notes = []
+
+    gc = gc_content(guide)
+
+    if gc < 35 or gc > 65:
+        score -= 2
+        notes.append("GC content outside ideal range")
+    elif 40 <= gc <= 60:
+        notes.append("Good GC balance")
+
+    if "TTTT" in guide:
+        score -= 2
+        notes.append("Contains TTTT motif")
+
+    if has_homopolymer(guide):
+        score -= 1.5
+        notes.append("Contains homopolymer run")
+
+    occurrences = count_exact_occurrences(guide, full_sequence)
+
+    if occurrences > 1:
+        score -= min(3, occurrences - 1)
+        notes.append("Repeated target within input sequence")
+
+    score = round(max(score, 0), 2)
+
+    if not notes:
+        notes.append("No obvious issues detected")
+
+    return score, "; ".join(notes)
+
+
+def add_guide_result(
+    results: list,
+    guide: str,
+    pam: str,
+    guide_start: int,
+    pam_start: int,
+    strand: str,
+    full_sequence: str
+):
+    score, notes = score_guide(guide, full_sequence)
+
+    # Approximate SpCas9 cut site: about 3 bases upstream of PAM.
+    # Stored as 1-based position for user readability.
+    cut_site = pam_start - 3 + 1
+
+    results.append({
+        "guide": guide,
+        "pam": pam,
+        "position": guide_start + 1,
+        "pam_position": pam_start + 1,
+        "cut_site": cut_site,
+        "strand": strand,
+        "gc_percent": gc_content(guide),
+        "score": score,
+        "notes": notes
+    })
+
+
+def find_guides(sequence: str, pam: str = "NGG", guide_length: int = 20):
+    results = []
+
+    # Forward strand
+    for i in range(len(sequence) - 2):
+        triplet = sequence[i:i + 3]
+
+        if pam_matches(triplet, pam):
+            guide_start = i - guide_length
+            guide_end = i
+
+            if guide_start >= 0:
+                guide = sequence[guide_start:guide_end]
+
+                add_guide_result(
+                    results=results,
+                    guide=guide,
+                    pam=triplet,
+                    guide_start=guide_start,
+                    pam_start=i,
+                    strand="+",
+                    full_sequence=sequence
+                )
+
+    # Reverse strand
+    reverse_sequence = reverse_complement(sequence)
+
+    for i in range(len(reverse_sequence) - 2):
+        triplet = reverse_sequence[i:i + 3]
+
+        if pam_matches(triplet, pam):
+            guide_start = i - guide_length
+            guide_end = i
+
+            if guide_start >= 0:
+                guide = reverse_sequence[guide_start:guide_end]
+
+                original_guide_start = len(sequence) - guide_end
+                original_pam_start = len(sequence) - (i + 3)
+
+                add_guide_result(
+                    results=results,
+                    guide=guide,
+                    pam=triplet,
+                    guide_start=original_guide_start,
+                    pam_start=original_pam_start,
+                    strand="-",
+                    full_sequence=sequence
+                )
+
+    results.sort(key=lambda result: result["score"], reverse=True)
+
+    return results
+
 @app.get("/api/gene/{symbol}")
 async def get_gene_report(symbol: str):
     symbol = symbol.strip().upper()
@@ -296,3 +468,26 @@ async def get_gene_report(symbol: str):
         "gene_structure": gene_structure
     }
 
+@app.post("/api/crispr/design")
+async def design_guides(payload: CrisprRequest):
+    sequence = clean_sequence(payload.sequence)
+
+    if len(sequence) < payload.guide_length + 3:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Sequence too short. Please enter at least {payload.guide_length + 3} DNA bases."
+        )
+
+    guides = find_guides(
+        sequence=sequence,
+        pam=payload.pam,
+        guide_length=payload.guide_length
+    )
+
+    return {
+        "input_length": len(sequence),
+        "pam": payload.pam,
+        "guide_length": payload.guide_length,
+        "guide_count": len(guides),
+        "guides": guides[:20]
+    }
