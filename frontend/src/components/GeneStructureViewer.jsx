@@ -20,7 +20,7 @@ export function GeneStructureViewer({ geneStructure }) {
     defaultTranscript;
 
   return (
-    <Card radius="lg" shadow="xs" p="md">
+    <Card radius="xl" shadow="sm" p="lg" withBorder>
       <Stack>
         <Title order={3}>Gene Structure Viewer</Title>
         <Text c="dimmed">

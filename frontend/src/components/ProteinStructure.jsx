@@ -11,7 +11,7 @@ export function ProteinStructure({ alphafold }) {
   }
 
   return (
-    <Card radius="lg" shadow="xs" p="md">
+    <Card radius="xl" shadow="sm" p="lg" withBorder>
       <Stack>
         <Title order={3}>AlphaFold Structure</Title>
         <Text>

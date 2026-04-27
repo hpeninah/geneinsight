@@ -13,7 +13,6 @@ import {
   Title,
   Alert,
   Badge,
-  SimpleGrid
 } from '@mantine/core';
 import { fetchGeneReport } from './api';
 import { GeneDashboard } from './components/GeneDashboard';
@@ -139,61 +138,11 @@ function App() {
             </Alert>
           )}
 
-          {/*adding a feature summary card*/}
-          {report && (
-            <>
-              <FeatureSummary report={report} />
-              <GeneDashboard report={report} />
-            </>
-          )}
+          {/*dashboard*/}
+          {report && <GeneDashboard report={report} />}
         </Stack>
       </Container>
     </AppShell>
-  );
-}
-
-/*feature summary card*/
-function FeatureSummary({ report }) {
-  const papers = report.papers || [];
-  const alphafold = report.alphafold;
-  const structure = report.gene_structure?.selected_transcript;
-
-  const items = [
-    {
-      label: 'Literature',
-      value: `${papers.length} papers`,
-      color: 'blue',
-    },
-    {
-      label: 'Protein structure',
-      value: alphafold ? 'AlphaFold found' : 'Not found',
-      color: alphafold ? 'green' : 'gray',
-    },
-    {
-      label: 'Gene structure',
-      value: structure ? `${structure.exon_count} exons` : 'Not found',
-      color: structure ? 'violet' : 'gray',
-    },
-    {
-      label: 'CRISPR',
-      value: 'Guide explorer ready',
-      color: 'teal',
-    },
-  ];
-
-  return (
-    <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="md">
-      {items.map((item) => (
-        <Card key={item.label} p="md" radius="lg" shadow="sm" withBorder>
-          <Stack gap={4}>
-            <Text size="sm">{item.label}</Text>
-            <Badge color={item.color} size="lg" variant="light" w="fit-content">
-              {item.value}
-            </Badge>
-          </Stack>
-        </Card>
-      ))}
-    </SimpleGrid>
   );
 }
 

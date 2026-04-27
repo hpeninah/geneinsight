@@ -41,7 +41,7 @@ export function CrisprExplorer() {
   }
 
   return (
-    <Card radius="lg" shadow="xs" p="md">
+    <Card radius="xl" shadow="sm" p="lg" withBorder>
       <Stack>
         <Title order={3}>CRISPR Guide Explorer</Title>
         <Text c="dimmed">

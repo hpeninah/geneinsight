@@ -1,6 +1,6 @@
 import { Badge, Card, Group, Stack, Text, Title } from '@mantine/core';
 
-export function GeneOverview({ geneData, alphafold, geneStructure, papers }) {
+export function GeneOverview({ geneData, alphafold, geneStructure, papers}) {
   return (
     <Card radius="lg" shadow="xs" p="md">
       <Stack>
@@ -20,6 +20,7 @@ export function GeneOverview({ geneData, alphafold, geneStructure, papers }) {
               ? `${geneStructure.selected_transcript.exon_count} exons`
               : 'No gene structure'}
           </Badge>
+          <Badge color="teal">Guide explorer ready</Badge>
         </Group>
 
         <Text fz={"xl"}>{geneData.summary}</Text>

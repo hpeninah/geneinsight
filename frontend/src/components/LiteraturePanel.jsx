@@ -9,7 +9,7 @@ export function LiteraturePanel({ papers }) {
   });
 
   return (
-    <Card radius="lg" shadow="xs" p="md">
+    <Card radius="xl" shadow="sm" p="lg" withBorder>
       <Stack>
         <Title order={3}>Recent Related Papers</Title>
         <Text c="dimmed">
