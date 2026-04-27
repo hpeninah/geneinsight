@@ -18,7 +18,9 @@ export function GeneDashboard({ report }) {
         <Tabs.Tab value="dashboard">Dashboard</Tabs.Tab>
         <Tabs.Tab value="literature">Literature</Tabs.Tab>
         <Tabs.Tab value="protein">Protein Structure</Tabs.Tab>
+        <Tabs.Tab value="genestructure">Gene Structure</Tabs.Tab>
         <Tabs.Tab value="crispr">CRISPR Explorer</Tabs.Tab>
+        <Tabs.Tab value="comparegenes">Compare Genes</Tabs.Tab>
       </Tabs.List>
 
       <Tabs.Panel value="dashboard" pt="md">
@@ -29,11 +31,6 @@ export function GeneDashboard({ report }) {
             geneStructure={geneStructure}
             papers={papers}
           />
-
-          <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
-            <GeneStructureViewer geneStructure={geneStructure} />
-            <CompareGenes />
-          </SimpleGrid>
         </Stack>
       </Tabs.Panel>
 
@@ -45,8 +42,16 @@ export function GeneDashboard({ report }) {
         <ProteinStructure alphafold={alphafold} />
       </Tabs.Panel>
 
+      <Tabs.Panel value="genestructure" pt="md">
+        <GeneStructureViewer geneStructure={geneStructure} />
+      </Tabs.Panel>
+
       <Tabs.Panel value="crispr" pt="md">
         <CrisprExplorer />
+      </Tabs.Panel>
+
+      <Tabs.Panel value="comparegenes" pt="md">
+        <CompareGenes />
       </Tabs.Panel>
     </Tabs>
   );
