@@ -55,8 +55,8 @@ function App() {
       <Container size="lg">
         <Stack gap="md">
           <div>
-            <Title order={1}>GeneInsight Lite</Title>
-            <Text c="dimmed">
+            <Title order={1}>GeneInsight</Title>
+            <Text fontWeight={"bold"}>
               A bioinformatics dashboard for gene reports, literature, protein structure,
               gene structure, and CRISPR guide exploration.
             </Text>
@@ -180,7 +180,7 @@ function GeneOverview({ geneData, alphafold, geneStructure, papers }) {
           </Badge>
         </Group>
 
-        <Text>{geneData.summary}</Text>
+        <Text fz="xl">{geneData.summary}</Text>
       </Stack>
     </Card>
   );
