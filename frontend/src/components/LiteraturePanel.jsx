@@ -43,8 +43,12 @@ export function LiteraturePanel({ geneSymbol, initialPapers }) {
     }
   }
 
-  const scoredPapers = [...papers].sort((a, b) => {
-    return scorePaper(b, activeTopic).score - scorePaper(a, activeTopic).score;
+  const filteredAndSortedPapers = getFilteredAndSortedPapers({
+    papers,
+    topic: activeTopic,
+    sortBy,
+    startYear,
+    endYear
   });
 
   return (
@@ -91,28 +95,76 @@ export function LiteraturePanel({ geneSymbol, initialPapers }) {
           </Alert>
         )}
 
-        <Group>
-          <Badge color="blue" variant="light">
-            Showing {papers.length} papers
+        <Group spacing="xs" align="center" noWrap>
+          <Badge color="blue" variant="light" size="sm">
+            Showing {filteredAndSortedPapers.length} of {papers.length} papers
           </Badge>
 
           {activeTopic ? (
-            <Badge color="violet" variant="light">
+            <Badge color="violet" variant="light" size="sm">
               Ranked by: {activeTopic}
             </Badge>
           ) : (
-            <Badge color="gray" variant="light">
+            <Badge color="gray" variant="light" size="sm">
               Recent papers preview
             </Badge>
           )}
+
+          <SegmentedControl
+            size="sm"
+            value={sortBy}
+            onChange={setSortBy}
+            data={[
+              { label: 'Relevance', value: 'relevance' },
+              { label: 'Newest', value: 'newest' },
+              { label: 'Oldest', value: 'oldest' }
+            ]}
+            sx={{ minWidth: 260 }}
+          />
+
+          <NumberInput
+            size="sm"
+            label="Start"
+            placeholder="2020"
+            value={startYear}
+            onChange={(value) => setStartYear(value || '')}
+            min={1900}
+            max={2100}
+            w={110}
+            styles={{ label: { display: 'none' } }}
+          />
+
+          <NumberInput
+            size="sm"
+            label="End"
+            placeholder="2026"
+            value={endYear}
+            onChange={(value) => setEndYear(value || '')}
+            min={1900}
+            max={2100}
+            w={110}
+            styles={{ label: { display: 'none' } }}
+          />
+
+          <Button
+            variant="light"
+            size="sm"
+            onClick={() => {
+              setStartYear('');
+              setEndYear('');
+              setSortBy('relevance');
+            }}
+          >
+            Clear Filters
+          </Button>
         </Group>
 
-        {scoredPapers.length === 0 ? (
+        {filteredAndSortedPapers.length === 0 ? (
           <Alert color="gray">
             No papers found. Try a broader topic or increase the result count.
           </Alert>
         ) : (
-          scoredPapers.map((paper) => {
+          filteredAndSortedPapers.map((paper) => {
             const relevance = activeTopic ? scorePaper(paper, activeTopic) : null;
 
             return (
@@ -150,13 +202,7 @@ export function LiteraturePanel({ geneSymbol, initialPapers }) {
                         Score: {relevance.score}
                       </Text>
                       <Help 
-                        text="Relevance score: 
-                          exact topic phrase in title = +10, 
-                          exact phrase in abstract = +6, 
-                          each topic keyword in title = +5, 
-                          abstract = +3, 
-                          journal = +1. 
-                          Higher scores mean the paper is more closely related to your topic." />
+                        text="Relevance score: exact topic phrase in title = +10, exact phrase in abstract = +6, each topic keyword in title = +5, abstract = +3, journal = +1. Higher scores mean the paper is more closely related to your topic." />
 
                       {relevance.matches.length > 0 && (
                         <Text size="sm" c="dimmed">
@@ -247,6 +293,56 @@ function scorePaper(paper, topicInput) {
     label,
     matches
   };
+}
+
+function getPaperYear(paper) {
+  const parsedYear = Number.parseInt(paper.year, 10);
+  return Number.isNaN(parsedYear) ? null : parsedYear;
+}
+
+function getFilteredAndSortedPapers({ papers, topic, sortBy, startYear, endYear }) {
+  const start = startYear ? Number(startYear) : null;
+  const end = endYear ? Number(endYear) : null;
+
+  const filtered = papers.filter((paper) => {
+    const year = getPaperYear(paper);
+
+    if (!year) {
+      return false;
+    }
+
+    if (start && year < start) {
+      return false;
+    }
+
+    if (end && year > end) {
+      return false;
+    }
+
+    return true;
+  });
+
+  return filtered.sort((a, b) => {
+    const yearA = getPaperYear(a) || 0;
+    const yearB = getPaperYear(b) || 0;
+
+    if (sortBy === 'newest') {
+      return yearB - yearA;
+    }
+
+    if (sortBy === 'oldest') {
+      return yearA - yearB;
+    }
+
+    const relevanceA = scorePaper(a, topic).score;
+    const relevanceB = scorePaper(b, topic).score;
+
+    if (relevanceB !== relevanceA) {
+      return relevanceB - relevanceA;
+    }
+
+    return yearB - yearA;
+  });
 }
 
 {/**
