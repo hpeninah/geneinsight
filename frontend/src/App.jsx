@@ -62,11 +62,11 @@ function App() {
             }}
             >
               <Stack gap="xs">
-                <Badge color="white" variant="filled" c="indigo" w="fit-content">
+                {/* <Badge color="white" variant="filled" c="indigo" w="fit-content">
                   Bioinformatics Saas Prototype
-                </Badge>
+                </Badge> */}
 
-                <Title order={1} style={{color: 'white'}}>
+                <Title order={1} style={{color: 'rgba(238, 227, 106, 0.9)'}}>
                   GeneInsight
                 </Title>
 
