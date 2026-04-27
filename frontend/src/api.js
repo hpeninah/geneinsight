@@ -31,3 +31,24 @@ export async function designCrisprGuides(sequence) {
 
   return response.json();
 }
+
+export async function fetchPapers(symbol, topic = '', limit = 15) {
+  const params = new URLSearchParams();
+
+  if (topic) {
+    params.set('topic', topic);
+  }
+
+  params.set('limit', limit);
+
+  const response = await fetch(
+    `${API_BASE}/api/papers/${encodeURIComponent(symbol)}?${params.toString()}`
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to fetch papers.');
+  }
+
+  return response.json();
+}
