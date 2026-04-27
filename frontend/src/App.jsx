@@ -47,10 +47,9 @@ function App() {
   }
 
   return (
-    <AppShell padding="md">
-      <Container size="lg">
+    <AppShell>
+      <Container size="lg" mt="md" mb="md">
         <Stack gap="md">
-
           {/*header*/}
           <Paper
             p="xl"

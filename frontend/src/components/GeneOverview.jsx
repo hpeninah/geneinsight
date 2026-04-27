@@ -23,7 +23,7 @@ export function GeneOverview({ geneData, alphafold, geneStructure, papers}) {
           <Badge color="teal">Guide explorer ready</Badge>
         </Group>
 
-        <Text fz={"xl"}>{geneData.summary}</Text>
+        <Text fz={"lg"}>{geneData.summary}</Text>
       </Stack>
     </Card>
   );

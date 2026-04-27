@@ -110,7 +110,7 @@ function TranscriptViewer({ transcript }) {
       <Group>
         <Badge color="blue">Exons</Badge>
         <Badge color="gray">Introns</Badge>
-        <Badge color="violet">Direction {directionArrow}</Badge>
+        <Badge color={directionArrow === '←' ? 'orange' : 'violet'}>Direction {directionArrow}</Badge>
       </Group>
 
       <Paper p="md" radius="md" withBorder>
