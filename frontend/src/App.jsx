@@ -12,7 +12,8 @@ import {
   TextInput,
   Title,
   Alert,
-  Badge
+  Badge,
+  SimpleGrid
 } from '@mantine/core';
 import { fetchGeneReport } from './api';
 import { GeneDashboard } from './components/GeneDashboard';
@@ -118,6 +119,7 @@ function App() {
             </Stack>
           </Paper>
 
+          {/*loading gene report*/}
           {loading && (
             <Card radius="lg" shadow="xs" p="md">
               <Group>
@@ -130,16 +132,68 @@ function App() {
             </Card>
           )}
 
+          {/*error if no gene exists or gene search is wrong*/}
           {statusError && (
             <Alert color="red" title="Error">
               {statusError}
             </Alert>
           )}
 
-          {report && <GeneDashboard report={report} />}
+          {/*adding a feature summary card*/}
+          {report && (
+            <>
+              <FeatureSummary report={report} />
+              <GeneDashboard report={report} />
+            </>
+          )}
         </Stack>
       </Container>
     </AppShell>
+  );
+}
+
+/*feature summary card*/
+function FeatureSummary({ report }) {
+  const papers = report.papers || [];
+  const alphafold = report.alphafold;
+  const structure = report.gene_structure?.selected_transcript;
+
+  const items = [
+    {
+      label: 'Literature',
+      value: `${papers.length} papers`,
+      color: 'blue',
+    },
+    {
+      label: 'Protein structure',
+      value: alphafold ? 'AlphaFold found' : 'Not found',
+      color: alphafold ? 'green' : 'gray',
+    },
+    {
+      label: 'Gene structure',
+      value: structure ? `${structure.exon_count} exons` : 'Not found',
+      color: structure ? 'violet' : 'gray',
+    },
+    {
+      label: 'CRISPR',
+      value: 'Guide explorer ready',
+      color: 'teal',
+    },
+  ];
+
+  return (
+    <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="md">
+      {items.map((item) => (
+        <Card key={item.label} p="md" radius="lg" shadow="sm" withBorder>
+          <Stack gap={4}>
+            <Text size="sm">{item.label}</Text>
+            <Badge color={item.color} size="lg" variant="light" w="fit-content">
+              {item.value}
+            </Badge>
+          </Stack>
+        </Card>
+      ))}
+    </SimpleGrid>
   );
 }
 
