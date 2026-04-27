@@ -1,4 +1,4 @@
-import { SimpleGrid, Stack, Tabs } from '@mantine/core';
+import { Stack, Tabs } from '@mantine/core';
 import { GeneOverview } from './GeneOverview';
 import { LiteraturePanel } from './LiteraturePanel';
 import { ProteinStructure } from './ProteinStructure';
@@ -35,7 +35,7 @@ export function GeneDashboard({ report }) {
       </Tabs.Panel>
 
       <Tabs.Panel value="literature" pt="md">
-        <LiteraturePanel papers={papers} />
+        <LiteraturePanel geneSymbol={geneData.symbol} initialPapers={papers} />
       </Tabs.Panel>
 
       <Tabs.Panel value="protein" pt="md">

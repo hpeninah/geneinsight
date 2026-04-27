@@ -65,17 +65,44 @@ async def fetch_gene_data(symbol: str):
 
 # Literature: PubMed / NCBI E-utilities
 
-async def fetch_related_papers_pubmed(symbol: str):
+async def fetch_related_papers_pubmed(symbol: str, topic: str = "", limit: int = 10):
     base = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
     tool_name = "geneinsight_lite"
     email = "student@example.com"
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    limit = max(1, min(limit, 100))
+
+    symbol = symbol.strip().upper()
+    topic = topic.strip()
+
+    if topic:
+        # Split topic into searchable words/phrases.
+        # Example: "cancer therapy" -> cancer AND therapy
+        topic_words = [
+            word.strip()
+            for word in topic.replace(",", " ").split()
+            if word.strip()
+        ]
+
+        topic_query = " AND ".join(
+            [f'{word}[Title/Abstract]' for word in topic_words]
+        )
+
+        # Topic-first search:
+        # Papers must match the topic AND mention the gene.
+        search_term = (
+            f'({topic_query}) AND '
+            f'({symbol}[Title/Abstract] OR {symbol}[All Fields])'
+        )
+    else:
+        search_term = f'{symbol}[Title/Abstract] OR {symbol}[All Fields]'
+
+    async with httpx.AsyncClient(timeout=20.0) as client:
         search_params = {
             "db": "pubmed",
-            "term": f'{symbol}[Title/Abstract]',
-            "retmax": 5,
-            "sort": "pub date",
+            "term": search_term,
+            "retmax": limit,
+            "sort": "relevance" if topic else "pub date",
             "retmode": "json",
             "tool": tool_name,
             "email": email,
@@ -141,7 +168,7 @@ async def fetch_related_papers_pubmed(symbol: str):
             "title": title,
             "journal": journal,
             "year": year,
-            "abstract": abstract[:500],
+            "abstract": abstract[:700],
             "pmid": pmid,
             "url": f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/" if pmid else ""
         })
@@ -500,7 +527,7 @@ async def get_gene_report(symbol: str):
         )
 
     try:
-        papers = await fetch_related_papers_pubmed(symbol)
+        papers = await fetch_related_papers_pubmed(symbol, limit=5)
     except Exception as error:
         print("PubMed unavailable:", error)
         papers = []
@@ -523,6 +550,39 @@ async def get_gene_report(symbol: str):
         "alphafold": alphafold,
         "gene_structure": gene_structure
     }
+
+@app.get("/api/papers/{symbol}")
+async def get_papers(symbol: str, topic: str = "", limit: int = 15):
+    symbol = symbol.strip().upper()
+    topic = topic.strip()
+
+    if not symbol:
+        raise HTTPException(
+            status_code=400,
+            detail="Gene symbol is required."
+        )
+
+    try:
+        papers = await fetch_related_papers_pubmed(
+            symbol=symbol,
+            topic=topic,
+            limit=limit
+        )
+
+        return {
+            "symbol": symbol,
+            "topic": topic,
+            "limit": limit,
+            "paper_count": len(papers),
+            "papers": papers
+        }
+
+    except Exception as error:
+        print("PubMed paper search failed:", error)
+        raise HTTPException(
+            status_code=503,
+            detail="PubMed search is temporarily unavailable."
+        )
 
 
 @app.post("/api/crispr/design")

@@ -11,10 +11,8 @@ export function GeneOverview({ geneData, alphafold, geneStructure, papers}) {
         </div>
 
         <Group>
-          <Badge color="blue">Papers: {papers.length}</Badge>
-          <Badge color={alphafold ? 'green' : 'gray'}>
-            {alphafold ? 'AlphaFold found' : 'No AlphaFold'}
-          </Badge>
+          <Badge color={papers ? 'blue' : 'gray'}>{papers ? 'Literature Found' : 'No Literature'}</Badge>
+          <Badge color={alphafold ? 'green' : 'gray'}>{alphafold ? 'AlphaFold found' : 'No AlphaFold'}</Badge>
           <Badge color={geneStructure ? 'violet' : 'gray'}>
             {geneStructure?.selected_transcript?.exon_count
               ? `${geneStructure.selected_transcript.exon_count} exons`
