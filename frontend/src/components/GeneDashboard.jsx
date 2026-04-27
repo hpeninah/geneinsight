@@ -13,7 +13,7 @@ export function GeneDashboard({ report }) {
   const geneStructure = report.gene_structure;
 
   return (
-    <Tabs defaultValue="dashboard">
+    <Tabs defaultValue="dashboard" variant="pills" radius="md" color="indigo" fw="bolder" fz="xl"> 
       <Tabs.List>
         <Tabs.Tab value="dashboard">Dashboard</Tabs.Tab>
         <Tabs.Tab value="literature">Literature</Tabs.Tab>
