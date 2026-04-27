@@ -11,7 +11,8 @@ import {
   Text,
   TextInput,
   Title,
-  Alert
+  Alert,
+  Badge
 } from '@mantine/core';
 import { fetchGeneReport } from './api';
 import { GeneDashboard } from './components/GeneDashboard';
@@ -49,39 +50,72 @@ function App() {
     <AppShell padding="md">
       <Container size="lg">
         <Stack gap="md">
-          <div>
-            <Title order={1}>GeneInsight Lite</Title>
-            <Text>
-              A bioinformatics dashboard for gene reports, literature, protein structure,
-              gene structure, and CRISPR guide exploration.
-            </Text>
-          </div>
 
-          <Paper p="md" radius="lg" shadow="xs">
-            <Group align="end">
-              <TextInput
-                label="Gene symbol"
-                placeholder="Try TP53, BRCA1, EGFR..."
-                value={gene}
-                onChange={(event) => setGene(event.currentTarget.value)}
-                style={{ flex: 1 }}
-              />
-              <Button onClick={() => handleSearch()}>Generate Report</Button>
-            </Group>
+          {/*header*/}
+          <Paper
+            p="xl"
+            radius="xl"
+            shadow="md"
+            withBorder
+            style={{
+              background: 'linear-gradient(135deg, rgba(79,79,229,0.95), rgba(14,165,233,0.9))',
+              color: 'white',
+            }}
+            >
+              <Stack gap="xs">
+                <Badge color="white" variant="filled" c="indigo" w="fit-content">
+                  Bioinformatics Saas Prototype
+                </Badge>
 
-            <Group mt="sm" gap="xs">
-              <Text size="sm" c="dimmed">Try:</Text>
-              {['TP53', 'BRCA1', 'EGFR', 'CFTR'].map((example) => (
-                <Button
-                  key={example}
-                  size="xs"
-                  variant="light"
-                  onClick={() => handleSearch(example)}
-                >
-                  {example}
-                </Button>
-              ))}
-            </Group>
+                <Title order={1} style={{color: 'white'}}>
+                  GeneInsight
+                </Title>
+
+                <Text size="lg" maw={760} style={{color: 'rgba(255,255,255,0.9)'}}>
+                Turn a gene symbol into an integrated dashboard for literature, protein structure, transcript structure, CRISPR guide exploration, and gene comparison.
+                </Text>
+              </Stack>
+            </Paper>
+
+          {/*Search Card on Initial Entry*/}
+          <Paper p="lg" radius="xl" shadow="sm" withBorder>
+            <Stack gap="sm">
+
+              {/*Search bar*/}
+              <Group align="end">
+                  <TextInput
+                    label="Search a gene"
+                    description="Enter a gene symbol to generate a full GeneInsight report."
+                    placeholder="Try TP53, BRCA1, EGFR..."
+                    value={gene}
+                    onChange={(e) => setGene(e.currentTarget.value)}
+                    style={{ flex: 1 }}
+                    size="md"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleSearch();
+                      }
+                    }}
+                  />
+                  <Button size="md" onClick={() => handleSearch()}>Generate Report</Button>
+                </Group>
+                
+                {/*Suggested gene searches*/}
+                <Group gap="xs">
+                <Text size="sm" c="dimmed">Popular Examples:</Text>
+                {['TP53', 'BRCA1', 'EGFR', 'CFTR'].map((example) => (
+                  <Button
+                    key={example}
+                    size="xs"
+                    variant="light"
+                    onClick={() => handleSearch(example)}
+                  >
+                    {example}
+                  </Button>
+                ))}
+              </Group>
+            </Stack>
           </Paper>
 
           {loading && (

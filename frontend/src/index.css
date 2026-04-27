@@ -1,0 +1,16 @@
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at top left, rgba(99, 102, 241, 0.18), transparent 32rem),
+    radial-gradient(circle at top right, rgba(14, 165, 233, 0.14), transparent 28rem),
+    #f8fafc;
+}
+
+a {
+  color: #4f46e5;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
