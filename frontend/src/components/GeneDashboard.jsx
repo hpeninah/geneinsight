@@ -4,7 +4,7 @@ import { LiteraturePanel } from './LiteraturePanel';
 import { ProteinStructure } from './ProteinStructure';
 import { GeneStructureViewer } from './GeneStructureViewer';
 import { CrisprExplorer } from './CrisprExplorer';
-import { CompareGenes } from './CompareGenes';
+// import { CompareGenes } from './CompareGenes';
 
 export function GeneDashboard({ report }) {
   const geneData = report.gene;
