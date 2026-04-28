@@ -1,18 +1,29 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+
+import asyncio
 import httpx
-import xml.etree.ElementTree as ET
 import re
+import time
+import xml.etree.ElementTree as ET
+
 
 app = FastAPI(title="GeneInsight Lite")
 
-# lets React talk to FastAPI
+
+# -----------------------------
+# CORS / Static files
+# -----------------------------
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -25,14 +36,48 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 def read_index():
     return FileResponse("static/index.html")
 
+
+# -----------------------------
+# Simple built-in cache
+# No external packages needed
+# -----------------------------
+
+cache = {}
+
+
+def get_from_cache(key: str):
+    item = cache.get(key)
+
+    if item is None:
+        return None
+
+    if time.time() > item["expires_at"]:
+        del cache[key]
+        return None
+
+    return item["value"]
+
+
+def save_to_cache(key: str, value, ttl_seconds: int):
+    cache[key] = {
+        "value": value,
+        "expires_at": time.time() + ttl_seconds,
+    }
+
+
+# -----------------------------
 # Request models
+# -----------------------------
 
 class CrisprRequest(BaseModel):
     sequence: str
     pam: str = "NGG"
     guide_length: int = 20
 
+
+# -----------------------------
 # Gene information: MyGene.info
+# -----------------------------
 
 async def fetch_gene_data(symbol: str):
     url = "https://mygene.info/v3/query"
@@ -41,10 +86,10 @@ async def fetch_gene_data(symbol: str):
         "q": f"symbol:{symbol}",
         "species": "human",
         "size": 1,
-        "fields": "symbol,name,summary,entrezgene"
+        "fields": "symbol,name,summary,entrezgene",
     }
 
-    async with httpx.AsyncClient(timeout=20.0) as client:
+    async with httpx.AsyncClient(timeout=10.0) as client:
         response = await client.get(url, params=params)
         response.raise_for_status()
         data = response.json()
@@ -63,41 +108,42 @@ async def fetch_gene_data(symbol: str):
         "entrezgene": hit.get("entrezgene", "N/A"),
     }
 
-# Literature: PubMed / NCBI E-utilities
+
+# -----------------------------
+# Literature: PubMed / NCBI
+# -----------------------------
 
 async def fetch_related_papers_pubmed(symbol: str, topic: str = "", limit: int = 10):
     base = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
     tool_name = "geneinsight_lite"
     email = "student@example.com"
 
-    limit = max(1, min(limit, 100))
+    limit = max(1, min(int(limit), 100))
 
     symbol = symbol.strip().upper()
     topic = topic.strip()
 
     if topic:
-        # Split topic into searchable words/phrases.
-        # Example: "cancer therapy" -> cancer AND therapy
         topic_words = [
             word.strip()
             for word in topic.replace(",", " ").split()
             if word.strip()
         ]
 
+        # AND keeps the topic focused.
+        # If this feels too strict later, change AND to OR.
         topic_query = " AND ".join(
-            [f'{word}[Title/Abstract]' for word in topic_words]
+            [f"{word}[Title/Abstract]" for word in topic_words]
         )
 
-        # Topic-first search:
-        # Papers must match the topic AND mention the gene.
         search_term = (
-            f'({topic_query}) AND '
-            f'({symbol}[Title/Abstract] OR {symbol}[All Fields])'
+            f"({topic_query}) AND "
+            f"({symbol}[Title/Abstract] OR {symbol}[All Fields])"
         )
     else:
-        search_term = f'{symbol}[Title/Abstract] OR {symbol}[All Fields]'
+        search_term = f"{symbol}[Title/Abstract] OR {symbol}[All Fields]"
 
-    async with httpx.AsyncClient(timeout=20.0) as client:
+    async with httpx.AsyncClient(timeout=12.0) as client:
         search_params = {
             "db": "pubmed",
             "term": search_term,
@@ -110,7 +156,7 @@ async def fetch_related_papers_pubmed(symbol: str, topic: str = "", limit: int =
 
         search_response = await client.get(
             f"{base}/esearch.fcgi",
-            params=search_params
+            params=search_params,
         )
         search_response.raise_for_status()
         search_data = search_response.json()
@@ -130,7 +176,7 @@ async def fetch_related_papers_pubmed(symbol: str, topic: str = "", limit: int =
 
         fetch_response = await client.get(
             f"{base}/efetch.fcgi",
-            params=fetch_params
+            params=fetch_params,
         )
         fetch_response.raise_for_status()
 
@@ -170,24 +216,79 @@ async def fetch_related_papers_pubmed(symbol: str, topic: str = "", limit: int =
             "year": year,
             "abstract": abstract[:700],
             "pmid": pmid,
-            "url": f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/" if pmid else ""
+            "url": f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/" if pmid else "",
         })
 
     return papers
 
+
+# -----------------------------
 # Protein structure: UniProt + AlphaFold
+# -----------------------------
+
+def classify_plddt(score):
+    if score is None:
+        return {
+            "label": "Unavailable",
+            "color": "gray",
+            "description": "No model confidence score was available.",
+        }
+
+    if score >= 90:
+        return {
+            "label": "Very high confidence",
+            "color": "blue",
+            "description": "Most residues are predicted with very high local confidence.",
+        }
+
+    if score >= 70:
+        return {
+            "label": "Confident",
+            "color": "green",
+            "description": "The model is generally reliable, but should still be interpreted with biological context.",
+        }
+
+    if score >= 50:
+        return {
+            "label": "Low confidence",
+            "color": "yellow",
+            "description": "Some regions may be flexible, disordered, or less reliable.",
+        }
+
+    return {
+        "label": "Very low confidence",
+        "color": "red",
+        "description": "The model should be interpreted with caution.",
+    }
+
+
+def get_uniprot_protein_name(entry):
+    return (
+        entry
+        .get("proteinDescription", {})
+        .get("recommendedName", {})
+        .get("fullName", {})
+        .get("value")
+    )
+
 
 async def fetch_uniprot_accession(symbol: str):
+    """
+    Fast protein lookup for the main gene report.
+
+    This gets only the UniProt accession, protein name, and basic AlphaFold viewer links.
+    It does NOT fetch AlphaFold confidence here because that slows down the main search.
+    """
     url = "https://rest.uniprot.org/uniprotkb/search"
 
     params = {
-        "query": f'gene:{symbol} AND organism_id:9606',
+        "query": f"gene_exact:{symbol} AND organism_id:9606",
         "fields": "accession,gene_names,protein_name",
         "format": "json",
-        "size": 5
+        "size": 5,
     }
 
-    async with httpx.AsyncClient(timeout=20.0) as client:
+    async with httpx.AsyncClient(timeout=10.0) as client:
         response = await client.get(url, params=params)
         response.raise_for_status()
         data = response.json()
@@ -220,28 +321,184 @@ async def fetch_uniprot_accession(symbol: str):
     if not accession:
         return None
 
+    protein_name = get_uniprot_protein_name(best_entry)
+
     return {
         "accession": accession,
+        "protein_name": protein_name,
         "alphafold_entry_url": f"https://alphafold.ebi.ac.uk/entry/{accession}",
-        "molstar_embed_url": f"https://molstar.org/viewer/?afdb={accession}&hide-controls=1"
+        "molstar_embed_url": f"https://molstar.org/viewer/?afdb={accession}&hide-controls=1",
+        "cif_url": f"https://alphafold.ebi.ac.uk/files/AF-{accession}-F1-model_v6.cif",
+        "pdb_url": f"https://alphafold.ebi.ac.uk/files/AF-{accession}-F1-model_v6.pdb",
+        "pae_url": f"https://alphafold.ebi.ac.uk/files/AF-{accession}-F1-predicted_aligned_error_v6.json",
     }
 
 
+async def fetch_confidence_summary(confidence_url: str):
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        response = await client.get(confidence_url)
+
+        if response.status_code == 404:
+            return {}
+
+        response.raise_for_status()
+        data = response.json()
+
+    scores = []
+
+    if isinstance(data, list):
+        for item in data:
+            if isinstance(item, dict):
+                score = (
+                    item.get("confidenceScore")
+                    or item.get("plddt")
+                    or item.get("score")
+                )
+            else:
+                score = item
+
+            try:
+                score = float(score)
+                if 0 <= score <= 100:
+                    scores.append(score)
+            except (TypeError, ValueError):
+                pass
+
+    elif isinstance(data, dict):
+        possible_keys = [
+            "confidenceScore",
+            "confidenceScores",
+            "plddt",
+            "scores",
+        ]
+
+        for key in possible_keys:
+            values = data.get(key)
+
+            if isinstance(values, list):
+                for value in values:
+                    try:
+                        value = float(value)
+                        if 0 <= value <= 100:
+                            scores.append(value)
+                    except (TypeError, ValueError):
+                        pass
+
+    if not scores:
+        return {}
+
+    total = len(scores)
+
+    very_high = sum(1 for score in scores if score > 90)
+    high = sum(1 for score in scores if 70 < score <= 90)
+    low = sum(1 for score in scores if 50 < score <= 70)
+    very_low = sum(1 for score in scores if score <= 50)
+
+    mean_plddt = round(sum(scores) / total, 2)
+
+    return {
+        "mean_plddt": mean_plddt,
+        "plddt_distribution": {
+            "very_high": round((very_high / total) * 100, 1),
+            "high": round((high / total) * 100, 1),
+            "low": round((low / total) * 100, 1),
+            "very_low": round((very_low / total) * 100, 1),
+        },
+    }
+
+
+async def fetch_alphafold_metadata(accession: str):
+    """
+    Slower AlphaFold metadata.
+    This is only called through /api/alphafold/{accession}.
+    """
+    url = f"https://alphafold.ebi.ac.uk/api/prediction/{accession}"
+
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        response = await client.get(url)
+
+        if response.status_code == 404:
+            return {}
+
+        response.raise_for_status()
+        data = response.json()
+
+    if not data:
+        return {}
+
+    entry = data[0] if isinstance(data, list) else data
+
+    latest_version = entry.get("latestVersion") or entry.get("version") or 6
+
+    confidence_url = (
+        entry.get("confidenceUrl")
+        or f"https://alphafold.ebi.ac.uk/files/AF-{accession}-F1-confidence_v{latest_version}.json"
+    )
+
+    try:
+        confidence_summary = await asyncio.wait_for(
+            fetch_confidence_summary(confidence_url),
+            timeout=4,
+        )
+    except Exception as error:
+        print("AlphaFold confidence summary unavailable:", error)
+        confidence_summary = {}
+
+    mean_plddt = (
+        confidence_summary.get("mean_plddt")
+        or entry.get("globalMetricValue")
+        or entry.get("confidenceScore")
+        or entry.get("meanPlddt")
+    )
+
+    if mean_plddt is not None:
+        try:
+            mean_plddt = round(float(mean_plddt), 2)
+        except (TypeError, ValueError):
+            mean_plddt = None
+
+    confidence = classify_plddt(mean_plddt)
+
+    return {
+        "entry_id": entry.get("entryId"),
+        "protein_name": entry.get("uniprotDescription") or entry.get("proteinDescription"),
+        "organism": entry.get("organismScientificName"),
+        "tax_id": entry.get("taxId"),
+        "sequence_length": entry.get("uniprotEnd"),
+        "model_created_date": entry.get("modelCreatedDate"),
+        "latest_version": latest_version,
+
+        "mean_plddt": mean_plddt,
+        "confidence_label": confidence["label"],
+        "confidence_color": confidence["color"],
+        "confidence_description": confidence["description"],
+
+        "cif_url": entry.get("cifUrl") or f"https://alphafold.ebi.ac.uk/files/AF-{accession}-F1-model_v{latest_version}.cif",
+        "pdb_url": entry.get("pdbUrl") or f"https://alphafold.ebi.ac.uk/files/AF-{accession}-F1-model_v{latest_version}.pdb",
+        "pae_url": entry.get("paeDocUrl") or f"https://alphafold.ebi.ac.uk/files/AF-{accession}-F1-predicted_aligned_error_v{latest_version}.json",
+        "confidence_url": confidence_url,
+
+        **confidence_summary,
+    }
+
+
+# -----------------------------
 # Gene structure: Ensembl
+# -----------------------------
 
 async def fetch_gene_structure(symbol: str):
     url = f"https://rest.ensembl.org/lookup/symbol/homo_sapiens/{symbol}"
 
     params = {
-        "expand": 1
+        "expand": 1,
     }
 
     headers = {
         "Content-Type": "application/json",
-        "Accept": "application/json"
+        "Accept": "application/json",
     }
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=12.0) as client:
         response = await client.get(url, params=params, headers=headers)
 
         if response.status_code == 404:
@@ -297,7 +554,7 @@ async def fetch_gene_structure(symbol: str):
                 "end": exon_end,
                 "length": exon_length,
                 "relative_start": exon_start - tx_start,
-                "relative_end": exon_end - tx_start
+                "relative_end": exon_end - tx_start,
             })
 
         return {
@@ -308,7 +565,7 @@ async def fetch_gene_structure(symbol: str):
             "length": tx_length,
             "strand": transcript.get("strand", data.get("strand", 1)),
             "exon_count": len(exon_blocks),
-            "exons": exon_blocks
+            "exons": exon_blocks,
         }
 
     transcript_payloads = [
@@ -319,9 +576,9 @@ async def fetch_gene_structure(symbol: str):
     transcript_payloads.sort(
         key=lambda transcript: (
             transcript["biotype"] == "protein_coding",
-            transcript["length"]
+            transcript["length"],
         ),
-        reverse=True
+        reverse=True,
     )
 
     selected_payload = build_transcript_payload(selected_transcript)
@@ -334,10 +591,13 @@ async def fetch_gene_structure(symbol: str):
         "gene_strand": data.get("strand", 1),
         "selected_transcript_id": selected_payload["transcript_id"],
         "selected_transcript": selected_payload,
-        "transcripts": transcript_payloads[:10]
+        "transcripts": transcript_payloads[:10],
     }
 
+
+# -----------------------------
 # CRISPR helper functions
+# -----------------------------
 
 def clean_sequence(sequence: str) -> str:
     sequence = sequence.upper().replace("\n", "").replace(" ", "")
@@ -428,12 +688,8 @@ def add_guide_result(
     guide_start: int,
     pam_start: int,
     strand: str,
-    full_sequence: str
+    full_sequence: str,
 ):
-    """
-    guide_start and pam_start are 0-based positions in the original input sequence.
-    cut_site is stored as 1-based approximate position.
-    """
     score, notes = score_guide(guide, full_sequence)
 
     cut_site = pam_start - 3 + 1
@@ -447,7 +703,7 @@ def add_guide_result(
         "strand": strand,
         "gc_percent": gc_content(guide),
         "score": score,
-        "notes": notes
+        "notes": notes,
     })
 
 
@@ -472,7 +728,7 @@ def find_guides(sequence: str, pam: str = "NGG", guide_length: int = 20):
                     guide_start=guide_start,
                     pam_start=i,
                     strand="+",
-                    full_sequence=sequence
+                    full_sequence=sequence,
                 )
 
     # Reverse strand
@@ -488,7 +744,6 @@ def find_guides(sequence: str, pam: str = "NGG", guide_length: int = 20):
             if guide_start >= 0:
                 guide = reverse_sequence[guide_start:guide_end]
 
-                # Convert reverse-complement guide position back to original sequence.
                 original_guide_start = len(sequence) - guide_end
                 original_pam_start = len(sequence) - (i + 3)
 
@@ -499,14 +754,17 @@ def find_guides(sequence: str, pam: str = "NGG", guide_length: int = 20):
                     guide_start=original_guide_start,
                     pam_start=original_pam_start,
                     strand="-",
-                    full_sequence=sequence
+                    full_sequence=sequence,
                 )
 
     results.sort(key=lambda result: result["score"], reverse=True)
 
     return results
 
+
+# -----------------------------
 # API routes
+# -----------------------------
 
 @app.get("/api/gene/{symbol}")
 async def get_gene_report(symbol: str):
@@ -515,73 +773,186 @@ async def get_gene_report(symbol: str):
     if not symbol:
         raise HTTPException(
             status_code=400,
-            detail="Gene symbol is required."
+            detail="Gene symbol is required.",
         )
+
+    cache_key = f"gene_report:{symbol}"
+    cached_result = get_from_cache(cache_key)
+
+    if cached_result is not None:
+        return cached_result
 
     gene = await fetch_gene_data(symbol)
 
     if gene is None:
         raise HTTPException(
             status_code=404,
-            detail=f"No gene found for symbol '{symbol}'."
+            detail=f"No gene found for symbol '{symbol}'.",
         )
 
-    try:
-        papers = await fetch_related_papers_pubmed(symbol, limit=5)
-    except Exception as error:
-        print("PubMed unavailable:", error)
-        papers = []
+    async def safe_fetch_papers():
+        try:
+            return await asyncio.wait_for(
+                fetch_related_papers_pubmed(symbol, limit=5),
+                timeout=8,
+            )
+        except Exception as error:
+            print("PubMed unavailable or timed out:", error)
+            return []
 
-    try:
-        alphafold = await fetch_uniprot_accession(symbol)
-    except Exception as error:
-        print("UniProt/AlphaFold unavailable:", error)
-        alphafold = None
+    async def safe_fetch_alphafold():
+        try:
+            return await asyncio.wait_for(
+                fetch_uniprot_accession(symbol),
+                timeout=8,
+            )
+        except Exception as error:
+            print("UniProt/AlphaFold unavailable or timed out:", error)
+            return None
 
-    try:
-        gene_structure = await fetch_gene_structure(symbol)
-    except Exception as error:
-        print("Ensembl unavailable:", error)
-        gene_structure = None
+    async def safe_fetch_gene_structure():
+        try:
+            return await asyncio.wait_for(
+                fetch_gene_structure(symbol),
+                timeout=10,
+            )
+        except Exception as error:
+            print("Ensembl unavailable or timed out:", error)
+            return None
 
-    return {
+    papers, alphafold, gene_structure = await asyncio.gather(
+        safe_fetch_papers(),
+        safe_fetch_alphafold(),
+        safe_fetch_gene_structure(),
+    )
+
+    result = {
         "gene": gene,
         "papers": papers,
         "alphafold": alphafold,
-        "gene_structure": gene_structure
+        "gene_structure": gene_structure,
     }
+
+    save_to_cache(cache_key, result, ttl_seconds=60 * 60)
+
+    return result
+
+
+@app.get("/api/gene-structure/{symbol}")
+async def get_gene_structure(symbol: str):
+    symbol = symbol.strip().upper()
+
+    if not symbol:
+        raise HTTPException(
+            status_code=400,
+            detail="Gene symbol is required.",
+        )
+
+    cache_key = f"gene_structure:{symbol}"
+    cached_result = get_from_cache(cache_key)
+
+    if cached_result is not None:
+        return cached_result
+
+    try:
+        gene_structure = await asyncio.wait_for(
+            fetch_gene_structure(symbol),
+            timeout=10,
+        )
+
+        result = {
+            "symbol": symbol,
+            "gene_structure": gene_structure,
+        }
+
+        save_to_cache(cache_key, result, ttl_seconds=60 * 60)
+
+        return result
+
+    except Exception as error:
+        print("Ensembl unavailable or timed out:", error)
+        raise HTTPException(
+            status_code=503,
+            detail="Gene structure is temporarily unavailable.",
+        )
+
+
+@app.get("/api/alphafold/{accession}")
+async def get_alphafold_metadata(accession: str):
+    accession = accession.strip().upper()
+
+    if not accession:
+        raise HTTPException(
+            status_code=400,
+            detail="Accession is required.",
+        )
+
+    cache_key = f"alphafold_metadata:{accession}"
+    cached_result = get_from_cache(cache_key)
+
+    if cached_result is not None:
+        return cached_result
+
+    try:
+        metadata = await asyncio.wait_for(
+            fetch_alphafold_metadata(accession),
+            timeout=8,
+        )
+
+        save_to_cache(cache_key, metadata, ttl_seconds=60 * 60 * 6)
+
+        return metadata
+
+    except Exception as error:
+        print("AlphaFold metadata unavailable:", error)
+        raise HTTPException(
+            status_code=503,
+            detail="AlphaFold metadata is temporarily unavailable.",
+        )
+
 
 @app.get("/api/papers/{symbol}")
 async def get_papers(symbol: str, topic: str = "", limit: int = 15):
     symbol = symbol.strip().upper()
     topic = topic.strip()
+    limit = max(1, min(int(limit), 100))
 
     if not symbol:
         raise HTTPException(
             status_code=400,
-            detail="Gene symbol is required."
+            detail="Gene symbol is required.",
         )
+
+    cache_key = f"papers:{symbol}:{topic}:{limit}"
+    cached_result = get_from_cache(cache_key)
+
+    if cached_result is not None:
+        return cached_result
 
     try:
         papers = await fetch_related_papers_pubmed(
             symbol=symbol,
             topic=topic,
-            limit=limit
+            limit=limit,
         )
 
-        return {
+        result = {
             "symbol": symbol,
             "topic": topic,
             "limit": limit,
             "paper_count": len(papers),
-            "papers": papers
+            "papers": papers,
         }
+
+        save_to_cache(cache_key, result, ttl_seconds=60 * 30)
+
+        return result
 
     except Exception as error:
         print("PubMed paper search failed:", error)
         raise HTTPException(
             status_code=503,
-            detail="PubMed search is temporarily unavailable."
+            detail="PubMed search is temporarily unavailable.",
         )
 
 
@@ -592,13 +963,13 @@ async def design_guides(payload: CrisprRequest):
     if len(sequence) < payload.guide_length + 3:
         raise HTTPException(
             status_code=400,
-            detail=f"Sequence too short. Please enter at least {payload.guide_length + 3} DNA bases."
+            detail=f"Sequence too short. Please enter at least {payload.guide_length + 3} DNA bases.",
         )
 
     guides = find_guides(
         sequence=sequence,
         pam=payload.pam,
-        guide_length=payload.guide_length
+        guide_length=payload.guide_length,
     )
 
     return {
@@ -606,7 +977,5 @@ async def design_guides(payload: CrisprRequest):
         "pam": payload.pam,
         "guide_length": payload.guide_length,
         "guide_count": len(guides),
-        "guides": guides[:20]
+        "guides": guides[:20],
     }
-
-## ATGCGTACGATCGTAGGCTAGCTAGGCTAGCTAGGATCGGATCGTAGCTAGGCTAGCTAAGG

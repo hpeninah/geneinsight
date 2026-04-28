@@ -52,3 +52,14 @@ export async function fetchPapers(symbol, topic = '', limit = 15) {
 
   return response.json();
 }
+
+export async function fetchAlphaFoldMetadata(accession) {
+  const response = await fetch(`${API_BASE}/api/alphafold/${encodeURIComponent(accession)}`);
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to fetch AlphaFold metadata.');
+  }
+
+  return response.json();
+}
