@@ -20,7 +20,7 @@ export function GeneDashboard({ report }) {
         <Tabs.Tab value="protein">Protein Structure</Tabs.Tab>
         <Tabs.Tab value="genestructure">Gene Structure</Tabs.Tab>
         <Tabs.Tab value="crispr">CRISPR Explorer</Tabs.Tab>
-        <Tabs.Tab value="comparegenes">Compare Genes</Tabs.Tab>
+        {/* <Tabs.Tab value="comparegenes">Compare Genes</Tabs.Tab> */}
       </Tabs.List>
 
       <Tabs.Panel value="dashboard" pt="md">
@@ -49,10 +49,10 @@ export function GeneDashboard({ report }) {
       <Tabs.Panel value="crispr" pt="md">
         <CrisprExplorer />
       </Tabs.Panel>
-
+      {/* 
       <Tabs.Panel value="comparegenes" pt="md">
         <CompareGenes />
-      </Tabs.Panel>
+      </Tabs.Panel> */}
     </Tabs>
   );
 }
