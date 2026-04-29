@@ -570,7 +570,7 @@ async def fetch_gene_structure(symbol: str):
         "Accept": "application/json",
     }
 
-    async with httpx.AsyncClient(timeout=12.0) as client:
+    async with httpx.AsyncClient(timeout=20.0) as client:
         response = await client.get(url, params=params, headers=headers)
 
         if response.status_code == 404:
@@ -886,7 +886,7 @@ async def get_gene_report(symbol: str):
         try:
             return await asyncio.wait_for(
                 fetch_gene_structure(symbol),
-                timeout=10,
+                timeout=20,
             )
         except Exception as error:
             print("Ensembl unavailable or timed out:", error)
