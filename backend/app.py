@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
+# from fastapi.responses import FileResponse
+# from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -29,12 +29,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-
 @app.get("/")
 def read_index():
-    return FileResponse("static/index.html")
+    return {"message": "GeneInsight API is running"}
+
+# app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+# @app.get("/")
+# def read_index():
+#     return FileResponse("static/index.html")
 
 
 # -----------------------------
