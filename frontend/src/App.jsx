@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   AppShell,
+  Badge,
   Button,
   Card,
   Container,
@@ -12,16 +13,20 @@ import {
   TextInput,
   Title,
   Alert,
-  Badge,
 } from '@mantine/core';
 import { fetchGeneReport } from './api';
 import { GeneDashboard } from './components/GeneDashboard';
+
+const exampleGenes = ['TP53', 'BRCA1', 'EGFR', 'CFTR'];
 
 function App() {
   const [gene, setGene] = useState('');
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
   const [statusError, setStatusError] = useState('');
+  const [hasSearched, setHasSearched] = useState(false);
+
+  const hasReport = Boolean(report);
 
   async function handleSearch(symbolOverride) {
     const searchGene = (symbolOverride || gene).trim();
@@ -31,6 +36,7 @@ function App() {
       return;
     }
 
+    setHasSearched(true);
     setGene(searchGene);
     setLoading(true);
     setStatusError('');
@@ -46,102 +52,205 @@ function App() {
     }
   }
 
+  function handleGoHome() {
+    setReport(null);
+    setStatusError('');
+    setLoading(false);
+    setGene('');
+    setHasSearched(false);
+  }
+
   return (
     <AppShell>
-      <Container size="lg" mt="md" mb="md">
-        <Stack gap="md">
-          {/*header*/}
-          <Paper
-            p="xl"
-            radius="xl"
-            shadow="md"
-            withBorder
-            style={{
-              background: 'linear-gradient(135deg, rgba(79,79,229,0.95), rgba(14,165,233,0.9))',
-              color: 'white',
-            }}
+      <AppShell.Header
+        withBorder
+        style={{
+          backgroundColor: '#ffffff',
+        }}
+      >
+        <Container size="xl" h={72}>
+          <Group h="100%" justify="space-between" wrap="nowrap">
+            <Group
+              gap="sm"
+              onClick={handleGoHome}
+              style={{ cursor: 'pointer' }}
             >
-              <Stack gap="xs">
-                {/* <Badge color="white" variant="filled" c="indigo" w="fit-content">
-                  Bioinformatics Saas Prototype
-                </Badge> */}
+              <div
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 12,
+                  background: 'linear-gradient(135deg, #3F7CAC, #E2F89C)',
+                }}
+              />
 
-                <Title order={1} style={{color: 'rgba(238, 227, 106, 0.9)'}}>
+              <div>
+                <Text fw={900} size="lg" lh={1.1} c="brand.6">
                   GeneInsight
-                </Title>
-
-                <Text size="lg" maw={760} style={{color: 'rgba(255,255,255,0.9)'}}>
-                Turn a gene symbol into an integrated dashboard for literature, protein structure, transcript structure, CRISPR guide exploration, and gene comparison.
                 </Text>
-              </Stack>
-            </Paper>
+                <Text size="xs" c="dimmed">
+                  Integrated gene investigation platform
+                </Text>
+              </div>
+            </Group>
 
-          {/*Search Card on Initial Entry*/}
-          <Paper p="lg" radius="xl" shadow="sm" withBorder>
-            <Stack gap="sm">
+            {hasReport && (
+              <Group gap="xs" wrap="nowrap" visibleFrom="sm">
+                <TextInput
+                  placeholder="Search another gene..."
+                  value={gene}
+                  onChange={(e) => setGene(e.currentTarget.value)}
+                  size="sm"
+                  w={260}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSearch();
+                    }
+                  }}
+                />
 
-              {/*Search bar*/}
-              <Group align="end">
-                  <TextInput
-                    label="Search a gene"
-                    description="Enter a gene symbol to generate a full GeneInsight report."
-                    placeholder="Try TP53, BRCA1, EGFR..."
-                    value={gene}
-                    onChange={(e) => setGene(e.currentTarget.value)}
-                    style={{ flex: 1 }}
-                    size="md"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        handleSearch();
-                      }
-                    }}
-                  />
-                  <Button size="md" onClick={() => handleSearch()}>Generate Report</Button>
-                </Group>
-                
-                {/*Suggested gene searches*/}
-                <Group gap="xs">
-                <Text size="sm" c="dimmed">Popular Examples:</Text>
-                {['TP53', 'BRCA1', 'EGFR', 'CFTR'].map((example) => (
-                  <Button
-                    key={example}
-                    size="xs"
-                    variant="light"
-                    onClick={() => handleSearch(example)}
-                  >
-                    {example}
-                  </Button>
-                ))}
+                <Button
+                  size="sm"
+                  onClick={() => handleSearch()}
+                  loading={loading}
+                >
+                  Search
+                </Button>
               </Group>
-            </Stack>
-          </Paper>
+            )}
+          </Group>
+        </Container>
+      </AppShell.Header>
 
-          {/*loading gene report*/}
-          {loading && (
-            <Card radius="lg" shadow="xs" p="md">
-              <Group>
-                <Loader size="sm" />
-                <Text>Loading GeneInsight report...</Text>
-              </Group>
-              <Text size="sm" c="dimmed" mt="xs">
-                Fetching gene summary, literature, AlphaFold structure, and Ensembl transcript data.
-              </Text>
-            </Card>
-          )}
+      <AppShell.Main
+        style={{
+          minHeight: '100vh',
+          background:
+            'radial-gradient(circle at top left, rgba(63,124,172,0.16), transparent 28rem), radial-gradient(circle at top right, rgba(226,248,156,0.35), transparent 26rem), #f8fafb',
+        }}
+      >
+        <Container size="xl" pt={96} pb="xl">
+          <Stack gap="lg">
+            {!hasReport && !loading && !report &&(
+              <LandingSearch
+                gene={gene}
+                setGene={setGene}
+                loading={loading}
+                handleSearch={handleSearch}
+              />
+            )}
 
-          {/*error if no gene exists or gene search is wrong*/}
-          {statusError && (
-            <Alert color="red" title="Error">
-              {statusError}
-            </Alert>
-          )}
+            {loading && (
+              <Paper radius="xl" shadow="sm" p="xl" withBorder>
+                <Stack align="center" gap="sm">
+                  <Loader size="lg" />
+                  <Title order={3}>Generating GeneInsight report...</Title>
+                  <Text size="sm" c="dimmed" ta="center">
+                    Fetching gene summary, literature, AlphaFold structure, and transcript data.
+                  </Text>
+                </Stack>
+              </Paper>
+            )}
 
-          {/*dashboard*/}
-          {report && <GeneDashboard report={report} />}
-        </Stack>
-      </Container>
+            {statusError && (
+              <Alert color="red" title="Error" radius="lg">
+                {statusError}
+              </Alert>
+            )}
+
+            {report && <GeneDashboard report={report} />}
+          </Stack>
+        </Container>
+      </AppShell.Main>
     </AppShell>
+  );
+}
+
+function LandingSearch({ gene, setGene, loading, handleSearch }) {
+  return (
+    <Paper
+      p="xl"
+      radius="xl"
+      shadow="md"
+      withBorder
+      style={{
+        background: 'linear-gradient(135deg, #3F7CAC, #95AFBA)',
+        color: 'white',
+      }}
+    >
+      <Stack gap="lg">
+        <Stack gap="xs">
+          <Badge color="lime" variant="filled" c="black" w="fit-content">
+            Bioinformatics SaaS Prototype
+          </Badge>
+
+          <Title
+            order={1}
+            style={{
+              color: '#E2F89C',
+              fontSize: 'clamp(2.5rem, 6vw, 4.5rem)',
+              lineHeight: 1,
+            }}
+          >
+            GeneInsight
+          </Title>
+
+          <Text size="lg" maw={820} style={{ color: 'rgba(255,255,255,0.92)' }}>
+            Turn a gene symbol into an integrated workflow for literature evidence,
+            protein structure, transcript structure, CRISPR guide exploration, and
+            gene comparison.
+          </Text>
+        </Stack>
+
+        <Paper p="lg" radius="xl" bg="rgba(255,255,255,0.96)">
+          <Stack gap="sm">
+            <Group align="end">
+              <TextInput
+                label="Search a gene"
+                description="Enter a human gene symbol to generate a GeneInsight report."
+                placeholder="Try TP53, BRCA1, EGFR..."
+                value={gene}
+                onChange={(e) => setGene(e.currentTarget.value)}
+                style={{ flex: 1 }}
+                size="md"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleSearch();
+                  }
+                }}
+              />
+
+              <Button
+                size="md"
+                onClick={() => handleSearch()}
+                loading={loading}
+              >
+                Generate Report
+              </Button>
+            </Group>
+
+            <Group gap="xs">
+              <Text size="sm" c="dimmed">
+                Popular examples:
+              </Text>
+
+              {exampleGenes.map((example) => (
+                <Button
+                  key={example}
+                  size="xs"
+                  variant="light"
+                  onClick={() => handleSearch(example)}
+                >
+                  {example}
+                </Button>
+              ))}
+            </Group>
+          </Stack>
+        </Paper>
+      </Stack>
+    </Paper>
   );
 }
 
