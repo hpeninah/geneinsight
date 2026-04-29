@@ -17,6 +17,8 @@ Users can enter a gene symbol such as:
 
 The app then generates a report containing gene context, literature evidence, AlphaFold protein structure, transcript/exon structure, and CRISPR guide exploration tools.
 
+<img width="1413" height="556" alt="image" src="https://github.com/user-attachments/assets/b1ba59cc-073e-4942-a3f6-ecde8b5fec13" />
+
 ## Main Features
 
 ### Gene Overview
