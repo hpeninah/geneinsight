@@ -24,6 +24,7 @@ function App() {
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
   const [statusError, setStatusError] = useState('');
+  const [hasSearched, setHasSearched] = useState(false);
 
   const hasReport = Boolean(report);
 
@@ -35,6 +36,7 @@ function App() {
       return;
     }
 
+    setHasSearched(true);
     setGene(searchGene);
     setLoading(true);
     setStatusError('');
@@ -55,6 +57,7 @@ function App() {
     setStatusError('');
     setLoading(false);
     setGene('');
+    setHasSearched(false);
   }
 
   return (
@@ -129,7 +132,7 @@ function App() {
       >
         <Container size="xl" pt={96} pb="xl">
           <Stack gap="lg">
-            {!hasReport && (
+            {!hasReport && !loading && !report &&(
               <LandingSearch
                 gene={gene}
                 setGene={setGene}
@@ -139,18 +142,15 @@ function App() {
             )}
 
             {loading && (
-              <Card radius="xl" shadow="sm" p="lg" withBorder>
-                <Group>
-                  <Loader size="sm" />
-                  <div>
-                    <Text fw={700}>Loading GeneInsight report...</Text>
-                    <Text size="sm" c="dimmed">
-                      Fetching gene summary, preview literature, AlphaFold structure,
-                      and Ensembl transcript data.
-                    </Text>
-                  </div>
-                </Group>
-              </Card>
+              <Paper radius="xl" shadow="sm" p="xl" withBorder>
+                <Stack align="center" gap="sm">
+                  <Loader size="lg" />
+                  <Title order={3}>Generating GeneInsight report...</Title>
+                  <Text size="sm" c="dimmed" ta="center">
+                    Fetching gene summary, literature, AlphaFold structure, and transcript data.
+                  </Text>
+                </Stack>
+              </Paper>
             )}
 
             {statusError && (
