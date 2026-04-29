@@ -334,16 +334,37 @@ async def fetch_uniprot_accession(symbol: str):
     }
 
 
-async def fetch_confidence_summary(confidence_url: str):
-    async with httpx.AsyncClient(timeout=8.0) as client:
-        response = await client.get(confidence_url)
+async def fetch_confidence_summary(confidence_url: str, pdb_url: str = ""):
+    """
+    Try to fetch AlphaFold confidence JSON first.
+    If unavailable, fall back to parsing pLDDT from the PDB B-factor column.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            response = await client.get(confidence_url)
 
-        if response.status_code == 404:
-            return {}
+            if response.status_code != 404:
+                response.raise_for_status()
+                data = response.json()
 
-        response.raise_for_status()
-        data = response.json()
+                scores = extract_confidence_scores_from_json(data)
 
+                if scores:
+                    return summarize_plddt_scores(scores)
+
+    except Exception as error:
+        print("Confidence JSON unavailable, trying PDB fallback:", error)
+
+    if pdb_url:
+        try:
+            return await fetch_confidence_summary_from_pdb(pdb_url)
+        except Exception as error:
+            print("PDB confidence fallback unavailable:", error)
+
+    return {}
+
+
+def extract_confidence_scores_from_json(data):
     scores = []
 
     if isinstance(data, list):
@@ -384,9 +405,50 @@ async def fetch_confidence_summary(confidence_url: str):
                     except (TypeError, ValueError):
                         pass
 
+    return scores
+
+
+async def fetch_confidence_summary_from_pdb(pdb_url: str):
+    """
+    AlphaFold stores pLDDT in the B-factor/tempFactor column of the PDB file.
+    We use CA atoms only so each residue is counted once.
+    """
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        response = await client.get(pdb_url)
+
+        if response.status_code == 404:
+            return {}
+
+        response.raise_for_status()
+        pdb_text = response.text
+
+    scores = []
+
+    for line in pdb_text.splitlines():
+        if not line.startswith("ATOM"):
+            continue
+
+        atom_name = line[12:16].strip()
+
+        # Count one score per amino acid residue.
+        if atom_name != "CA":
+            continue
+
+        try:
+            b_factor = float(line[60:66].strip())
+
+            if 0 <= b_factor <= 100:
+                scores.append(b_factor)
+        except ValueError:
+            pass
+
     if not scores:
         return {}
 
+    return summarize_plddt_scores(scores)
+
+
+def summarize_plddt_scores(scores):
     total = len(scores)
 
     very_high = sum(1 for score in scores if score > 90)
@@ -430,6 +492,11 @@ async def fetch_alphafold_metadata(accession: str):
 
     latest_version = entry.get("latestVersion") or entry.get("version") or 6
 
+    pdb_url = (
+        entry.get("pdbUrl")
+        or f"https://alphafold.ebi.ac.uk/files/AF-{accession}-F1-model_v{latest_version}.pdb"
+    )
+
     confidence_url = (
         entry.get("confidenceUrl")
         or f"https://alphafold.ebi.ac.uk/files/AF-{accession}-F1-confidence_v{latest_version}.json"
@@ -437,8 +504,8 @@ async def fetch_alphafold_metadata(accession: str):
 
     try:
         confidence_summary = await asyncio.wait_for(
-            fetch_confidence_summary(confidence_url),
-            timeout=4,
+            fetch_confidence_summary(confidence_url, pdb_url=pdb_url),
+            timeout=6,
         )
     except Exception as error:
         print("AlphaFold confidence summary unavailable:", error)
@@ -474,7 +541,7 @@ async def fetch_alphafold_metadata(accession: str):
         "confidence_description": confidence["description"],
 
         "cif_url": entry.get("cifUrl") or f"https://alphafold.ebi.ac.uk/files/AF-{accession}-F1-model_v{latest_version}.cif",
-        "pdb_url": entry.get("pdbUrl") or f"https://alphafold.ebi.ac.uk/files/AF-{accession}-F1-model_v{latest_version}.pdb",
+        "pdb_url": pdb_url,
         "pae_url": entry.get("paeDocUrl") or f"https://alphafold.ebi.ac.uk/files/AF-{accession}-F1-predicted_aligned_error_v{latest_version}.json",
         "confidence_url": confidence_url,
 
